@@ -115,7 +115,9 @@ export default function ToleranceAnalyzer() {
     Array(26).fill("")
   );
   const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackEmail, setFeedbackEmail] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
+  const [feedbackSending, setFeedbackSending] = useState(false);
 
   const targetPlusRef = useRef<HTMLInputElement>(null);
   const targetMinusRef = useRef<HTMLInputElement>(null);
@@ -666,6 +668,15 @@ export default function ToleranceAnalyzer() {
               <p className="text-sm text-navy-500 dark:text-forest-300">
                 Tell us what you think about the tool and what we can improve. What else would you like to see?
               </p>
+              <input
+                type="email"
+                value={feedbackEmail}
+                onChange={(e) => setFeedbackEmail(e.target.value)}
+                placeholder="Your email"
+                className="w-full sm:max-w-xs rounded-md border-navy-200 dark:border-forest-600 bg-navy-50/30 dark:bg-forest-700/50
+                           text-sm text-navy-700 dark:text-forest-200 placeholder:text-navy-300 dark:placeholder:text-forest-500
+                           focus:border-gold-500 focus:ring-gold-500 px-3 py-1.5"
+              />
               <textarea
                 value={feedbackText}
                 onChange={(e) => setFeedbackText(e.target.value)}
@@ -676,16 +687,26 @@ export default function ToleranceAnalyzer() {
                            focus:border-gold-500 focus:ring-gold-500 px-3 py-2 resize-none"
               />
               <button
-                onClick={() => {
-                  if (feedbackText.trim()) setFeedbackSent(true);
+                onClick={async () => {
+                  if (!feedbackText.trim()) return;
+                  setFeedbackSending(true);
+                  try {
+                    const res = await fetch("/api/feedback", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ email: feedbackEmail, feedback: feedbackText }),
+                    });
+                    if (res.ok) setFeedbackSent(true);
+                  } catch { /* ignore */ }
+                  setFeedbackSending(false);
                 }}
-                disabled={!feedbackText.trim()}
+                disabled={!feedbackText.trim() || feedbackSending}
                 className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold
                            bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950
                            hover:bg-navy-700 dark:hover:bg-gold-400 transition-colors
                            disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Submit
+                {feedbackSending ? "Sending..." : "Submit"}
               </button>
             </div>
           )}

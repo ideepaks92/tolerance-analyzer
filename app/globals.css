@@ -48,7 +48,7 @@
   }
 
   .tol-input {
-    @apply w-full rounded-md border-navy-200 bg-navy-50/50 text-sm font-mono tabular-nums
+    @apply w-full min-w-[4.5rem] rounded-md border-navy-200 bg-navy-50/50 text-sm font-mono tabular-nums
            focus:border-gold-500 focus:ring-gold-500 text-right px-2 py-1.5
            dark:bg-forest-700 dark:border-forest-600 dark:text-forest-100;
   }
