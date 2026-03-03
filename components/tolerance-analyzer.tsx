@@ -257,7 +257,15 @@ export default function ToleranceAnalyzer() {
 
   const resetAll = useCallback(() => {
     _nextId = 1;
-    setFeatures(Array.from({ length: 7 }, () => createFeature(unit)));
+    setFeatures(
+      Array.from({ length: 7 }, () => ({
+        id: uid(),
+        processId: "custom",
+        tolPlus: "0",
+        tolMinus: "0",
+        direction: 1 as const,
+      }))
+    );
     setTargetPlus("");
     setTargetMinus("");
     setLinkTarget(true);
@@ -578,7 +586,7 @@ export default function ToleranceAnalyzer() {
               onClick={resetAll}
               className="text-xs text-navy-400 dark:text-forest-400 hover:text-navy-600 dark:hover:text-forest-200 transition-colors"
             >
-              Reset All
+              Reset All to 0
             </button>
           </div>
         </div>
