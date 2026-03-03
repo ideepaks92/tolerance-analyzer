@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@vercel/analytics": "^1.6.1",
     "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.7",
     "next": "^15.1.0",
