@@ -27,6 +27,7 @@ export interface ExportData {
   recommendationMethod: string;
   targetPlus: number | null;
   targetMinus: number | null;
+  sigmaK: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -276,9 +277,11 @@ export function exportToPDF(data: ExportData) {
     `Sum of tolerances (${u})`
   );
 
+  const sk = data.sigmaK || 3;
+
   drawCard(
     1,
-    "RSS (3s)",
+    `RSS (${sk}s)`,
     [
       `+${data.results.rssPlus.toFixed(dec)}`,
       `-${data.results.rssMinus.toFixed(dec)}`,
@@ -359,7 +362,7 @@ export function exportToPDF(data: ExportData) {
 
     drawBar("Worst Case", wcMax, y, [154, 165, 192]);
     y += 10;
-    drawBar("RSS (3s)", rssMax, y, C.gold);
+    drawBar(`RSS (${sk}s)`, rssMax, y, C.gold);
     y += 10;
 
     if (data.targetPlus !== null) {
@@ -423,7 +426,7 @@ export function exportToPDF(data: ExportData) {
   doc.setFontSize(6);
   doc.setTextColor(140, 150, 165);
   doc.text(
-    "RSS assumes each feature tolerance represents a +/-3 sigma distribution (99.73% coverage).",
+    `RSS assumes each feature tolerance represents a +/-${sk} sigma distribution.`,
     margin,
     y
   );

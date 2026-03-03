@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
   calculateStackup,
+  sigmaCoverage,
   formatTolerance,
   formatDppm,
   formatYield,
@@ -20,6 +21,8 @@ import ReferencesSection from "./references-section";
 /* ------------------------------------------------------------------ */
 
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+const SIGMA_OPTIONS = [3, 3.5, 4, 4.5, 5, 6];
 
 const NODE_PLACEHOLDERS: Record<number, string> = {
   0: "e.g. Hole center",
@@ -111,6 +114,7 @@ export default function ToleranceAnalyzer() {
   const [userName, setUserName] = useState("");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [unit, setUnit] = useState<"mm" | "in">("mm");
+  const [sigmaK, setSigmaK] = useState(3);
   const [nodeDescriptions, setNodeDescriptions] = useState<string[]>(() =>
     Array(26).fill("")
   );
@@ -189,8 +193,8 @@ export default function ToleranceAnalyzer() {
   const results = useMemo(() => {
     const tp = targetPlus !== "" ? parseFloat(targetPlus) : null;
     const tm = targetMinus !== "" ? parseFloat(targetMinus) : null;
-    return calculateStackup(featureInputs, tp, linkTarget ? tp : tm);
-  }, [featureInputs, targetPlus, targetMinus, linkTarget]);
+    return calculateStackup(featureInputs, tp, linkTarget ? tp : tm, sigmaK);
+  }, [featureInputs, targetPlus, targetMinus, linkTarget, sigmaK]);
 
   const hasTarget = targetPlus !== "" && parseFloat(targetPlus) > 0;
   const quality = results.dppm !== null ? getQualityLevel(results.dppm) : null;
@@ -342,8 +346,9 @@ export default function ToleranceAnalyzer() {
       recommendationMethod: methodLabel,
       targetPlus: targetPlus !== "" ? parseFloat(targetPlus) : null,
       targetMinus: targetMinus !== "" ? parseFloat(targetMinus) : null,
+      sigmaK,
     };
-  }, [title, userName, unit, features, nodeDescriptions, results, recommendation, targetPlus, targetMinus]);
+  }, [title, userName, unit, features, nodeDescriptions, results, recommendation, targetPlus, targetMinus, sigmaK]);
 
   const handleExportPDF = useCallback(async () => {
     const { exportToPDF } = await import("@/lib/export");
@@ -578,6 +583,24 @@ export default function ToleranceAnalyzer() {
         <RecommendationCard recommendation={recommendation} />
 
         {/* Results grid */}
+        <div className="flex items-center gap-3 mb-1">
+          <p className="text-sm font-bold text-navy-600 dark:text-gold-400 uppercase tracking-wider">Results</p>
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-navy-500 dark:text-forest-300">RSS coverage:</label>
+            <select
+              value={sigmaK}
+              onChange={(e) => setSigmaK(parseFloat(e.target.value))}
+              className="text-xs rounded-md border-navy-200 dark:border-forest-600 bg-navy-50/50 dark:bg-forest-700
+                         text-navy-700 dark:text-forest-200 focus:border-gold-500 focus:ring-gold-500 py-0.5 pl-2 pr-6"
+            >
+              {SIGMA_OPTIONS.map((k) => (
+                <option key={k} value={k}>
+                  {k}{"\u03c3"} ({sigmaCoverage(k).toFixed(k >= 4 ? 4 : 2)}%)
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="metric-card col-span-1">
             <p className="metric-label text-navy-600 dark:text-gold-400">Worst Case</p>
@@ -593,7 +616,7 @@ export default function ToleranceAnalyzer() {
           </div>
 
           <div className="metric-card col-span-1">
-            <p className="metric-label text-navy-600 dark:text-gold-400">{"RSS (3\u03c3)"}</p>
+            <p className="metric-label text-navy-600 dark:text-gold-400">{`RSS (${sigmaK}\u03c3)`}</p>
             <p className="metric-value text-navy-800 dark:text-forest-100">
               <span className="text-base font-normal text-navy-400 dark:text-forest-400 mr-0.5">+</span>
               {formatTolerance(results.rssPlus, decimals)}
@@ -651,6 +674,7 @@ export default function ToleranceAnalyzer() {
             target={hasTarget ? parseFloat(targetPlus) : null}
             unit={unit}
             decimals={decimals}
+            sigmaK={sigmaK}
           />
         )}
 
@@ -717,7 +741,7 @@ export default function ToleranceAnalyzer() {
 
         {/* Notes */}
         <div className="text-[11px] text-navy-400 dark:text-forest-400 text-center space-y-0.5">
-          <p>{"RSS assumes each feature tolerance represents a \u00b13\u03c3 distribution (99.73% coverage)."}</p>
+          <p>{`RSS assumes each feature tolerance represents a \u00b1${sigmaK}\u03c3 distribution (${sigmaCoverage(sigmaK).toFixed(sigmaK >= 4 ? 4 : 2)}% coverage).`}</p>
           <p>DPPM and yield are based on the RSS stack-up compared to the target tolerance.</p>
         </div>
 
@@ -1050,12 +1074,14 @@ function ComparisonBar({
   target,
   unit,
   decimals,
+  sigmaK,
 }: {
   worstCase: number;
   rss: number;
   target: number | null;
   unit: "mm" | "in";
   decimals: number;
+  sigmaK: number;
 }) {
   const maxVal = target
     ? Math.max(worstCase, rss, target)
@@ -1103,7 +1129,7 @@ function ComparisonBar({
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-navy-500 dark:text-forest-300/70 w-20 text-right">
-            {"RSS (3\u03c3)"}
+            {`RSS (${sigmaK}\u03c3)`}
           </span>
           <div className="flex-1 h-6 bg-navy-100 dark:bg-forest-700 rounded-full overflow-hidden relative">
             <div

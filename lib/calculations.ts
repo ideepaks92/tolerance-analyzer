@@ -41,10 +41,17 @@ export function normalCDF(x: number): number {
 }
 
 /**
+ * Coverage percentage for a given k-sigma level (two-sided).
+ */
+export function sigmaCoverage(k: number): number {
+  return (normalCDF(k) - normalCDF(-k)) * 100;
+}
+
+/**
  * Calculate tolerance stack-up using both worst-case and RSS methods.
  *
- * Each feature's tolerance is assumed to represent a ±3σ range.
- * For asymmetric tolerances: σ = (tolPlus + tolMinus) / 6,
+ * Each feature's tolerance is assumed to represent a ±kσ range (default k=3).
+ * For asymmetric tolerances: σ = (tolPlus + tolMinus) / (2·k),
  * and a mean shift of (tolPlus - tolMinus) / 2 from nominal.
  *
  * Direction (+1 or -1) controls whether the feature adds or subtracts
@@ -53,7 +60,8 @@ export function normalCDF(x: number): number {
 export function calculateStackup(
   features: FeatureInput[],
   targetPlus: number | null,
-  targetMinus: number | null
+  targetMinus: number | null,
+  sigmaK: number = 3
 ): StackupResult {
   let worstCasePlus = 0;
   let worstCaseMinus = 0;
@@ -72,7 +80,7 @@ export function calculateStackup(
       worstCaseMinus += tp;
     }
 
-    const sigma_i = (tp + tm) / 6;
+    const sigma_i = (tp + tm) / (2 * sigmaK);
     const meanShift_i = (tp - tm) / 2;
 
     sumSigmaSquared += sigma_i * sigma_i;
@@ -80,8 +88,8 @@ export function calculateStackup(
   }
 
   const sigma = Math.sqrt(sumSigmaSquared);
-  const rssPlus = totalMeanShift + 3 * sigma;
-  const rssMinus = -totalMeanShift + 3 * sigma;
+  const rssPlus = totalMeanShift + sigmaK * sigma;
+  const rssMinus = -totalMeanShift + sigmaK * sigma;
 
   let dppm: number | null = null;
   let yieldPercent: number | null = null;
