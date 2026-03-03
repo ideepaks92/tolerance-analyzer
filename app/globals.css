@@ -1,0 +1,82 @@
+@import url("https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700;900&family=Source+Sans+3:wght@300;400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply font-sans;
+  }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-xl border border-navy-100 shadow-sm
+           dark:bg-forest-800 dark:border-forest-700 dark:shadow-none;
+  }
+
+  .metric-card {
+    @apply card p-5 transition-shadow hover:shadow-md;
+  }
+
+  .metric-label {
+    @apply text-xs font-bold uppercase tracking-wider mb-1;
+  }
+
+  .metric-value {
+    @apply text-2xl font-bold font-mono tabular-nums;
+  }
+
+  .metric-sub {
+    @apply text-xs mt-1 text-navy-400 dark:text-forest-300/60;
+  }
+
+  .tol-input {
+    @apply w-full rounded-md border-navy-200 bg-navy-50/50 text-sm font-mono tabular-nums
+           focus:border-gold-500 focus:ring-gold-500 text-right px-2 py-1.5
+           dark:bg-forest-700 dark:border-forest-600 dark:text-forest-100;
+  }
+
+  .input-field {
+    @apply w-full rounded-md border-navy-200 bg-transparent text-sm
+           focus:border-gold-500 focus:ring-gold-500 px-2 py-1.5
+           placeholder:text-navy-300
+           dark:border-forest-600 dark:text-forest-100 dark:placeholder:text-forest-500;
+  }
+
+  .select-field {
+    @apply w-full rounded-md border-navy-200 bg-transparent text-sm
+           focus:border-gold-500 focus:ring-gold-500 px-2 py-1.5
+           dark:border-forest-600 dark:bg-transparent dark:text-forest-100;
+  }
+
+  .th-cell {
+    @apply px-3 py-2.5 text-[11px] font-semibold text-navy-500 uppercase tracking-wider
+           dark:text-forest-300/70;
+  }
+
+  .export-btn {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+           border transition-colors
+           bg-navy-50 border-navy-200 text-navy-600
+           hover:bg-navy-100 hover:border-navy-300
+           dark:bg-forest-700 dark:border-forest-600 dark:text-gold-300
+           dark:hover:bg-forest-600;
+  }
+}
