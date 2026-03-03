@@ -29,6 +29,7 @@ const PROCESS_LINKS = [
   { process: "Metal Extrusion", tol: "\u00b10.125 mm", url: "https://www.engineersedge.com/manufacturing/aluminum_extrusion_dimensions_and_tolerances_specification_13072.htm" },
   { process: "Metal Casting", tol: "\u00b10.400 mm", url: "https://www.modulusmetal.com/iso-8062-3-casting-dimensional-and-geometrical-tolerance-calculator/" },
   { process: "Casting + Post CNC", tol: "\u00b10.050 mm", url: "https://castingquality.com/casting-technology/casting-standard/iso-8062-1994-castings.html" },
+  { process: "3D Print (FDM)", tol: "\u00b10.200 mm", url: "https://wiki.bambulab.com/en/bambu-studio/ksrFDMTest" },
 ];
 
 export default function ReferencesSection() {

@@ -49,6 +49,12 @@ export const MANUFACTURING_PROCESSES: ManufacturingProcess[] = [
     description: "±0.050 mm — casting with CNC post-machining",
   },
   {
+    id: "fdm_3d_print",
+    name: "3D Print (FDM)",
+    defaultTol: 0.2,
+    description: "±0.200 mm typical for FDM/FFF (e.g. Bambu Lab, 0.4 mm nozzle)",
+  },
+  {
     id: "custom",
     name: "Custom",
     defaultTol: 0.05,

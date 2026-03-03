@@ -526,6 +526,10 @@ export default function ToleranceAnalyzer() {
             </button>
           </div>
 
+          <p className="px-4 py-1.5 text-[11px] text-navy-400 dark:text-forest-400 italic border-b border-navy-100 dark:border-forest-700/30">
+            For a two-part stack-up, assume shared datums and simply add both feature tolerance analyses.
+          </p>
+
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
