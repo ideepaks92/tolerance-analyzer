@@ -862,7 +862,9 @@ export default function ToleranceAnalyzer() {
                     Running...
                   </>
                 ) : mcUploadedData ? (
-                  `Run with data (${mcUploadedData.length} rows)`
+                  mcSupplement
+                    ? `Run (${mcUploadedData.length} rows + sampling to 1M)`
+                    : `Run with data only (${mcUploadedData.length} rows)`
                 ) : (
                   "Run (1,000,000 iterations)"
                 )}
