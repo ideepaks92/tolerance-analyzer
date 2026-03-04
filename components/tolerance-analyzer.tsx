@@ -15,6 +15,7 @@ import {
 import { MANUFACTURING_PROCESSES, getProcessById } from "@/lib/constants";
 import StackupDiagram from "./stackup-diagram";
 import ReferencesSection from "./references-section";
+import MonteCarloChart, { type MCResult } from "./monte-carlo-chart";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -70,6 +71,7 @@ interface Feature {
   tolPlus: string;
   tolMinus: string;
   direction: 1 | -1;
+  distribution: "normal" | "uniform";
 }
 
 let _nextId = 1;
@@ -89,6 +91,7 @@ function createFeature(u: "mm" | "in" = "mm"): Feature {
     tolPlus: tol,
     tolMinus: tol,
     direction: 1,
+    distribution: "normal" as const,
   };
 }
 
@@ -122,6 +125,9 @@ export default function ToleranceAnalyzer() {
   const [feedbackEmail, setFeedbackEmail] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [feedbackSending, setFeedbackSending] = useState(false);
+  const [mcResult, setMcResult] = useState<MCResult | null>(null);
+  const [mcRunning, setMcRunning] = useState(false);
+  const mcWorkerRef = useRef<Worker | null>(null);
 
   const targetPlusRef = useRef<HTMLInputElement>(null);
   const targetMinusRef = useRef<HTMLInputElement>(null);
@@ -264,6 +270,7 @@ export default function ToleranceAnalyzer() {
         tolPlus: "0",
         tolMinus: "0",
         direction: 1 as const,
+        distribution: "normal" as const,
       }))
     );
     setTargetPlus("");
@@ -355,8 +362,9 @@ export default function ToleranceAnalyzer() {
       targetPlus: targetPlus !== "" ? parseFloat(targetPlus) : null,
       targetMinus: targetMinus !== "" ? parseFloat(targetMinus) : null,
       sigmaK,
+      mcStats: mcResult?.stats ?? null,
     };
-  }, [title, userName, unit, features, nodeDescriptions, results, recommendation, targetPlus, targetMinus, sigmaK]);
+  }, [title, userName, unit, features, nodeDescriptions, results, recommendation, targetPlus, targetMinus, sigmaK, mcResult]);
 
   const handleExportPDF = useCallback(async () => {
     const { exportToPDF } = await import("@/lib/export");
@@ -367,6 +375,36 @@ export default function ToleranceAnalyzer() {
     const { exportToXLSX } = await import("@/lib/export");
     exportToXLSX(buildExportData());
   }, [buildExportData]);
+
+  const runMonteCarlo = useCallback(() => {
+    setMcRunning(true);
+    setMcResult(null);
+    const worker = new Worker("/mc-worker.js");
+    mcWorkerRef.current = worker;
+    const tp = targetPlus !== "" ? parseFloat(targetPlus) : null;
+    const tm = targetMinus !== "" ? parseFloat(targetMinus) : null;
+    worker.postMessage({
+      features: features.map((f) => ({
+        tolPlus: parseFloat(f.tolPlus) || 0,
+        tolMinus: parseFloat(f.tolMinus) || 0,
+        direction: f.direction,
+        distribution: f.distribution,
+      })),
+      iterations: 1_000_000,
+      sigmaK,
+      targetPlus: tp,
+      targetMinus: linkTarget ? tp : tm,
+    });
+    worker.onmessage = (e) => {
+      setMcResult(e.data as MCResult);
+      setMcRunning(false);
+      worker.terminate();
+    };
+    worker.onerror = () => {
+      setMcRunning(false);
+      worker.terminate();
+    };
+  }, [features, sigmaK, targetPlus, targetMinus, linkTarget]);
 
   /* ---- render ---- */
 
@@ -546,6 +584,7 @@ export default function ToleranceAnalyzer() {
                   <th className="th-cell text-left">From</th>
                   <th className="th-cell text-left">To</th>
                   <th className="th-cell w-32">Mfg Process</th>
+                  <th className="th-cell w-10 text-center" title="Distribution: Normal or Uniform">Dist</th>
                   <th className="th-cell w-28 text-right">{"+ Tol (" + unit + ")"}</th>
                   <th className="th-cell w-28 text-right">{"\u2212 Tol (" + unit + ")"}</th>
                   <th className="th-cell w-14 text-center">Dir</th>
@@ -689,6 +728,46 @@ export default function ToleranceAnalyzer() {
             sigmaK={sigmaK}
           />
         )}
+
+        {/* Monte Carlo */}
+        <div className="card px-5 py-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-bold text-navy-600 dark:text-gold-400 uppercase tracking-wider">
+              Monte Carlo Simulation
+            </p>
+            <button
+              onClick={runMonteCarlo}
+              disabled={mcRunning}
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold
+                         bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950
+                         hover:bg-navy-700 dark:hover:bg-gold-400 transition-colors
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {mcRunning ? (
+                <>
+                  <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Running...
+                </>
+              ) : (
+                "Run (1,000,000 iterations)"
+              )}
+            </button>
+          </div>
+          {mcResult ? (
+            <MonteCarloChart
+              result={mcResult}
+              targetPlus={hasTarget ? parseFloat(targetPlus) : null}
+              targetMinus={hasTarget ? parseFloat(linkTarget ? targetPlus : targetMinus) : null}
+              unit={unit}
+              decimals={decimals}
+              sigmaK={sigmaK}
+            />
+          ) : (
+            <p className="text-sm text-navy-400 dark:text-forest-400 text-center py-6">
+              Click &ldquo;Run&rdquo; to simulate 1M random assemblies and visualize the stack-up distribution.
+            </p>
+          )}
+        </div>
 
         {/* Feedback */}
         <div className="card px-5 py-4">
@@ -918,6 +997,24 @@ function FeatureRow({
               {p.name}
             </option>
           ))}
+        </select>
+      </td>
+
+      {/* Distribution */}
+      <td className="px-1 py-2 text-center">
+        <select
+          value={feature.distribution}
+          onChange={(e) =>
+            onUpdate(feature.id, {
+              distribution: e.target.value as "normal" | "uniform",
+            })
+          }
+          title={feature.distribution === "normal" ? "Normal distribution" : "Uniform distribution"}
+          className="text-xs rounded border-navy-200 dark:border-forest-600 bg-navy-50/50 dark:bg-forest-700
+                     text-navy-700 dark:text-forest-200 focus:border-gold-500 focus:ring-gold-500 py-0.5 px-1"
+        >
+          <option value="normal">N</option>
+          <option value="uniform">U</option>
         </select>
       </td>
 

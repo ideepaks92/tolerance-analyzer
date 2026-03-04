@@ -28,6 +28,16 @@ export interface ExportData {
   targetPlus: number | null;
   targetMinus: number | null;
   sigmaK: number;
+  mcStats: {
+    mean: number;
+    stdDev: number;
+    min: number;
+    max: number;
+    median: number;
+    dppm: number | null;
+    yieldPct: number | null;
+    iterations: number;
+  } | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -417,6 +427,50 @@ export function exportToPDF(data: ExportData) {
   doc.text(recBodyText, margin + 4, y + 10);
 
   y += recH + 8;
+
+  /* ================================================================ */
+  /*  MONTE CARLO (if available)                                        */
+  /* ================================================================ */
+  if (data.mcStats) {
+    sectionHeader("MONTE CARLO SIMULATION");
+    ensureSpace(30);
+
+    const mc = data.mcStats;
+    const mcCardW = (contentW - 4) / 3;
+    const mcCardH = 16;
+    const mcY = y;
+
+    const drawMcStat = (col: number, label: string, value: string) => {
+      const cx = margin + col * (mcCardW + 2);
+      doc.setFillColor(...C.navyLight);
+      doc.setDrawColor(200, 205, 220);
+      doc.roundedRect(cx, mcY, mcCardW, mcCardH, 1.5, 1.5, "FD");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.5);
+      doc.setTextColor(...C.navyMid);
+      doc.text(label, cx + 3, mcY + 5);
+      doc.setFont("courier", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(...C.navy);
+      doc.text(value, cx + 3, mcY + 12);
+    };
+
+    drawMcStat(0, "MEAN / STD DEV", `${mc.mean.toFixed(dec)} / ${mc.stdDev.toFixed(dec)} ${u}`);
+    drawMcStat(1, "MC DPPM", mc.dppm !== null ? mc.dppm.toLocaleString() : "-");
+    drawMcStat(2, "MC YIELD", mc.yieldPct !== null ? `${mc.yieldPct.toFixed(4)}%` : "-");
+
+    y = mcY + mcCardH + 4;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6);
+    doc.setTextColor(140, 150, 165);
+    doc.text(
+      `Based on ${mc.iterations.toLocaleString()} random assemblies. Range: [${mc.min.toFixed(dec)}, ${mc.max.toFixed(dec)}] ${u}`,
+      margin,
+      y
+    );
+    y += 8;
+  }
 
   /* ================================================================ */
   /*  NOTES                                                             */
