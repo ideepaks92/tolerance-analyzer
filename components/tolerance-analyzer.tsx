@@ -132,6 +132,7 @@ export default function ToleranceAnalyzer() {
   const mcWorkerRef = useRef<Worker | null>(null);
   const [mcUploadedData, setMcUploadedData] = useState<number[][] | null>(null);
   const [mcDataMode, setMcDataMode] = useState<"nominal" | "tolerance" | null>(null);
+  const [mcFileUnit, setMcFileUnit] = useState<"mm" | "in">("mm");
   const [mcFileError, setMcFileError] = useState<string | null>(null);
   const mcFileRef = useRef<HTMLInputElement>(null);
 
@@ -299,6 +300,7 @@ export default function ToleranceAnalyzer() {
     setNodeDescriptions(Array(26).fill(""));
     setMcUploadedData(null);
     setMcDataMode(null);
+    setMcFileUnit("mm");
     setMcFileError(null);
   }, [unit]);
 
@@ -474,7 +476,13 @@ export default function ToleranceAnalyzer() {
       targetMinus: linkTarget ? tp : tm,
     };
     if (mcUploadedData && mcDataMode) {
-      msg.historicalData = mcUploadedData;
+      const needConvert = mcFileUnit !== unit;
+      const factor = mcFileUnit === "in" && unit === "mm" ? 25.4
+        : mcFileUnit === "mm" && unit === "in" ? 1 / 25.4
+        : 1;
+      msg.historicalData = needConvert
+        ? mcUploadedData.map((row) => row.map((v) => v * factor))
+        : mcUploadedData;
       msg.dataMode = mcDataMode;
     }
     worker.postMessage(msg);
@@ -487,7 +495,7 @@ export default function ToleranceAnalyzer() {
       setMcRunning(false);
       worker.terminate();
     };
-  }, [features, sigmaK, targetPlus, targetMinus, linkTarget, mcUploadedData, mcDataMode]);
+  }, [features, sigmaK, targetPlus, targetMinus, linkTarget, mcUploadedData, mcDataMode, mcFileUnit, unit]);
 
   /* ---- render ---- */
 
@@ -884,10 +892,38 @@ export default function ToleranceAnalyzer() {
             </p>
             <p className="text-xs text-navy-400 dark:text-forest-400 mb-3 leading-relaxed">
               Upload an Excel (.xlsx) or Numbers file. Format: first row must be column headers <strong>1, 2, 3, ...</strong> matching
-              the number of features ({features.length}). Each column contains measured values in <strong>{unit}</strong>.
+              the number of features ({features.length}). Each column contains measured values in <strong>{mcFileUnit}</strong>.
+              {mcFileUnit !== unit && (
+                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                  {" "}Values will be converted from {mcFileUnit} to {unit} automatically.
+                </span>
+              )}
             </p>
 
-            {/* Step 1: Data type radio buttons */}
+            {/* File unit + data type */}
+            <div className="flex flex-wrap items-center gap-5 mb-3">
+              <span className="text-xs font-medium text-navy-600 dark:text-forest-300">File units:</span>
+              <button
+                onClick={() => setMcFileUnit("mm")}
+                className={`text-xs font-semibold px-2 py-0.5 rounded-l-md border transition-colors ${
+                  mcFileUnit === "mm"
+                    ? "bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950 border-navy-600 dark:border-gold-500"
+                    : "bg-white dark:bg-forest-700 text-navy-500 dark:text-forest-300 border-navy-200 dark:border-forest-600 hover:bg-navy-50 dark:hover:bg-forest-600"
+                }`}
+              >
+                mm
+              </button>
+              <button
+                onClick={() => setMcFileUnit("in")}
+                className={`text-xs font-semibold px-2 py-0.5 rounded-r-md border border-l-0 transition-colors ${
+                  mcFileUnit === "in"
+                    ? "bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950 border-navy-600 dark:border-gold-500"
+                    : "bg-white dark:bg-forest-700 text-navy-500 dark:text-forest-300 border-navy-200 dark:border-forest-600 hover:bg-navy-50 dark:hover:bg-forest-600"
+                }`}
+              >
+                in
+              </button>
+            </div>
             <div className="flex flex-wrap items-center gap-5 mb-3">
               <span className="text-xs font-medium text-navy-600 dark:text-forest-300">Data contains:</span>
               <label className="inline-flex items-center gap-1.5 cursor-pointer">
