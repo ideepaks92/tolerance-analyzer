@@ -21,6 +21,19 @@ const THEORY_LINKS = [
   },
 ];
 
+const MC_LINKS = [
+  {
+    title: "Enventive \u2014 Worst Case, RSS & Monte Carlo for Stackups",
+    url: "https://enventive.com/tolerance-analysis-resources/worst-case-rss-and-monte-carlo-simulation-calculations-for-tolerance-analysis/",
+    note: "Clear walkthrough of all three methods with real examples",
+  },
+  {
+    title: "Minitab \u2014 Understanding Tolerance Stack-Up Analysis",
+    url: "https://blog.minitab.com/en/blog/understanding-tolerance-stack-up-analysis",
+    note: "Beginner-friendly overview of worst-case vs Monte Carlo",
+  },
+];
+
 const PROCESS_LINKS = [
   { process: "CNC Milling", tol: "\u00b10.025 mm", url: "https://weldomachining.com/cnc-machining-tolerances/" },
   { process: "CNC Lathe", tol: "\u00b10.025 mm", url: "https://ecoreprap.com/blog/cnc-machining-tolerance/" },
@@ -39,7 +52,7 @@ export default function ReferencesSection() {
         References &amp; Resources
       </h3>
       <div className="max-h-52 overflow-y-auto pr-1">
-        <div className="grid md:grid-cols-2 gap-x-8 gap-y-4">
+        <div className="grid md:grid-cols-3 gap-x-8 gap-y-4">
           {/* Theory */}
           <div>
             <h4 className="text-xs font-bold text-navy-600 dark:text-forest-200 uppercase tracking-wider mb-2">
@@ -47,6 +60,30 @@ export default function ReferencesSection() {
             </h4>
             <ul className="space-y-1.5">
               {THEORY_LINKS.map((l) => (
+                <li key={l.url} className="text-sm leading-snug">
+                  <a
+                    href={l.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-navy-600 dark:text-gold-400 hover:underline font-medium"
+                  >
+                    {l.title}
+                  </a>
+                  <span className="text-navy-400 dark:text-forest-400 ml-1">
+                    &mdash; {l.note}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Monte Carlo Simulation */}
+          <div>
+            <h4 className="text-xs font-bold text-navy-600 dark:text-forest-200 uppercase tracking-wider mb-2">
+              Monte Carlo Simulation
+            </h4>
+            <ul className="space-y-1.5">
+              {MC_LINKS.map((l) => (
                 <li key={l.url} className="text-sm leading-snug">
                   <a
                     href={l.url}
