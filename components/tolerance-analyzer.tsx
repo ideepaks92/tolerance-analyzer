@@ -525,8 +525,16 @@ export default function ToleranceAnalyzer() {
               {theme === "dark" ? <SunIcon /> : <MoonIcon />}
             </button>
           </div>
-
-          {/* Target + Net Nominal side by side */}
+          {/* Feedback + Target + Net Nominal */}
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <a
+              href="#feedback"
+              className="hidden sm:inline-block text-xs sm:text-sm font-medium px-3 sm:px-5 py-1.5 rounded-full border
+                         border-gold-400 dark:border-gold-600 text-gold-600 dark:text-gold-400
+                         hover:bg-gold-50 dark:hover:bg-gold-900/30 transition-colors whitespace-nowrap text-center"
+            >
+              Provide Feedback
+            </a>
           <div className="flex items-end gap-2 bg-gold-50 dark:bg-gold-900/20 border border-gold-300 dark:border-gold-700 rounded-lg px-3 py-2.5">
             {/* Net Nominal — inline */}
             {features.some((f) => f.nominal !== "") && (
@@ -592,6 +600,7 @@ export default function ToleranceAnalyzer() {
             >
               <LockIcon locked={linkTarget} />
             </button>
+          </div>
           </div>
         </div>
       </header>
@@ -1052,7 +1061,7 @@ export default function ToleranceAnalyzer() {
         </div>
 
         {/* Feedback */}
-        <div className="card px-5 py-4">
+        <div id="feedback" className="card px-5 py-4 scroll-mt-20">
           <h3 className="text-sm font-bold text-navy-600 dark:text-gold-400 uppercase tracking-wider mb-3">
             Feedback
           </h3>
@@ -1136,7 +1145,7 @@ export default function ToleranceAnalyzer() {
               >
                 heydeepak.com
               </a>
-              ). 4 hours
+              ). 7 hours
             </p>
           </div>
         </footer>
