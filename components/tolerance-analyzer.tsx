@@ -132,6 +132,7 @@ export default function ToleranceAnalyzer() {
   const mcWorkerRef = useRef<Worker | null>(null);
   const [mcUploadedData, setMcUploadedData] = useState<number[][] | null>(null);
   const [mcDataMode, setMcDataMode] = useState<"nominal" | "tolerance" | null>(null);
+  const [mcFileError, setMcFileError] = useState<string | null>(null);
   const mcFileRef = useRef<HTMLInputElement>(null);
 
   const targetPlusRef = useRef<HTMLInputElement>(null);
@@ -298,6 +299,7 @@ export default function ToleranceAnalyzer() {
     setNodeDescriptions(Array(26).fill(""));
     setMcUploadedData(null);
     setMcDataMode(null);
+    setMcFileError(null);
   }, [unit]);
 
   const updateNodeDescription = useCallback(
@@ -399,19 +401,56 @@ export default function ToleranceAnalyzer() {
   const handleMcFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const XLSX = await import("xlsx");
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: "array" });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const raw: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
-    const dataRows = raw.slice(1);
-    const parsed: number[][] = dataRows
-      .map((row) => row.map((c) => (typeof c === "number" ? c : parseFloat(String(c)))))
-      .filter((row) => row.some((v) => !isNaN(v)));
-    if (parsed.length === 0) { alert("No numeric data found in the file."); return; }
-    setMcUploadedData(parsed);
-    if (mcFileRef.current) mcFileRef.current.value = "";
-  }, []);
+    setMcFileError(null);
+    setMcUploadedData(null);
+    try {
+      const XLSX = await import("xlsx");
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      if (wb.SheetNames.length === 0) { setMcFileError("File contains no sheets."); return; }
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      if (raw.length < 2) { setMcFileError("File must have a header row and at least one data row."); return; }
+
+      const expectedCols = features.length;
+      const headerRow = raw[0];
+      if (headerRow.length < expectedCols) {
+        setMcFileError(`Header has ${headerRow.length} column(s), but ${expectedCols} feature(s) are in the table. Columns should be labeled 1, 2, 3, ... ${expectedCols}.`);
+        return;
+      }
+
+      const dataRows = raw.slice(1);
+      const parsed: number[][] = [];
+      let nonNumericRows = 0;
+      for (let r = 0; r < dataRows.length; r++) {
+        const row = dataRows[r];
+        const nums = Array.from({ length: expectedCols }, (_, j) => {
+          const v = j < row.length ? row[j] : undefined;
+          return typeof v === "number" ? v : parseFloat(String(v ?? ""));
+        });
+        if (nums.every((v) => isNaN(v))) { nonNumericRows++; continue; }
+        const nanCols = nums.reduce((c, v) => c + (isNaN(v) ? 1 : 0), 0);
+        if (nanCols > 0) {
+          setMcFileError(`Row ${r + 2} has ${nanCols} non-numeric cell(s) in the first ${expectedCols} columns. All values must be numbers in ${unit}.`);
+          return;
+        }
+        parsed.push(nums);
+      }
+      if (parsed.length === 0) {
+        setMcFileError("No valid numeric data rows found after the header.");
+        return;
+      }
+      if (nonNumericRows > 0 && nonNumericRows > parsed.length * 0.1) {
+        setMcFileError(`${nonNumericRows} rows were entirely non-numeric and skipped. Check your file format.`);
+        return;
+      }
+      setMcUploadedData(parsed);
+    } catch {
+      setMcFileError("Could not read the file. Ensure it is a valid .xlsx, .xls, .csv, or .numbers file.");
+    } finally {
+      if (mcFileRef.current) mcFileRef.current.value = "";
+    }
+  }, [features.length, unit]);
 
   const runMonteCarlo = useCallback(() => {
     setMcRunning(true);
@@ -628,7 +667,7 @@ export default function ToleranceAnalyzer() {
                   <th className="th-cell text-left">From</th>
                   <th className="th-cell text-left">To</th>
                   <th className="th-cell w-32">Mfg Process</th>
-                  <th className="th-cell w-10 text-center" title="Distribution: Normal or Uniform">Dist</th>
+                  <th className="th-cell w-16 text-center" title="Distribution: Normal or Uniform">Dist</th>
                   <th className="th-cell w-24 text-right">{"Nominal (" + unit + ")"}</th>
                   <th className="th-cell w-28 text-right">{"+ Tol (" + unit + ")"}</th>
                   <th className="th-cell w-28 text-right">{"\u2212 Tol (" + unit + ")"}</th>
@@ -824,39 +863,61 @@ export default function ToleranceAnalyzer() {
             <p className="text-xs font-semibold text-navy-600 dark:text-gold-400 uppercase tracking-wider mb-2">
               Optional: Upload Historical Data
             </p>
-            <p className="text-xs text-navy-400 dark:text-forest-400 mb-2 leading-relaxed">
+            <p className="text-xs text-navy-400 dark:text-forest-400 mb-3 leading-relaxed">
               Upload an Excel (.xlsx) or Numbers file. Format: first row must be column headers <strong>1, 2, 3, ...</strong> matching
-              the number of features ({features.length}). Each column contains measured values in <strong>{unit}</strong>. Select
-              whether your data contains nominal dimensions or tolerance deviations (value {"\u2212"} nominal).
+              the number of features ({features.length}). Each column contains measured values in <strong>{unit}</strong>.
             </p>
+
+            {/* Step 1: Data type radio buttons */}
+            <div className="flex flex-wrap items-center gap-5 mb-3">
+              <span className="text-xs font-medium text-navy-600 dark:text-forest-300">Data contains:</span>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="mc-data-mode"
+                  checked={mcDataMode === "nominal"}
+                  onChange={() => { setMcDataMode("nominal"); setMcFileError(null); }}
+                  className="w-3.5 h-3.5 text-gold-500 border-navy-300 dark:border-forest-500 focus:ring-gold-500 dark:bg-forest-700"
+                />
+                <span className="text-xs text-navy-700 dark:text-forest-200">Nominal values (raw dimensions)</span>
+              </label>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="mc-data-mode"
+                  checked={mcDataMode === "tolerance"}
+                  onChange={() => { setMcDataMode("tolerance"); setMcFileError(null); }}
+                  className="w-3.5 h-3.5 text-gold-500 border-navy-300 dark:border-forest-500 focus:ring-gold-500 dark:bg-forest-700"
+                />
+                <span className="text-xs text-navy-700 dark:text-forest-200">Tolerance deviations (value {"\u2212"} nominal)</span>
+              </label>
+            </div>
+
+            {/* Step 2: File chooser — only enabled after mode is selected */}
             <div className="flex flex-wrap items-center gap-3">
-              <input
-                ref={mcFileRef}
-                type="file"
-                accept=".xlsx,.xls,.numbers,.csv"
-                onChange={handleMcFileUpload}
-                className="text-xs file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium
-                           file:bg-navy-100 dark:file:bg-forest-700 file:text-navy-700 dark:file:text-forest-200
-                           hover:file:bg-navy-200 dark:hover:file:bg-forest-600 transition-colors
-                           text-navy-500 dark:text-forest-400"
-              />
+              {mcDataMode ? (
+                <input
+                  ref={mcFileRef}
+                  type="file"
+                  accept=".xlsx,.xls,.numbers,.csv"
+                  onChange={handleMcFileUpload}
+                  className="text-xs file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium
+                             file:bg-navy-100 dark:file:bg-forest-700 file:text-navy-700 dark:file:text-forest-200
+                             hover:file:bg-navy-200 dark:hover:file:bg-forest-600 transition-colors
+                             text-navy-500 dark:text-forest-400"
+                />
+              ) : (
+                <p className="text-xs text-navy-400 dark:text-forest-500 italic">
+                  Select a data type above to enable file upload.
+                </p>
+              )}
               {mcUploadedData && (
                 <>
-                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                    {"\u2713"} {mcUploadedData.length} rows loaded
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                    {"\u2713"} File read! {mcUploadedData.length} rows loaded.
                   </span>
-                  <select
-                    value={mcDataMode ?? ""}
-                    onChange={(e) => setMcDataMode(e.target.value as "nominal" | "tolerance")}
-                    className="text-xs rounded-md border-navy-200 dark:border-forest-600 bg-white dark:bg-forest-700
-                               text-navy-700 dark:text-forest-200 py-1 pl-2 pr-6 focus:border-gold-500 focus:ring-gold-500"
-                  >
-                    <option value="" disabled>Data type...</option>
-                    <option value="nominal">Nominal values (raw dimensions)</option>
-                    <option value="tolerance">Tolerance values (deviation from nominal)</option>
-                  </select>
                   <button
-                    onClick={() => { setMcUploadedData(null); setMcDataMode(null); }}
+                    onClick={() => { setMcUploadedData(null); setMcFileError(null); }}
                     className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                   >
                     Clear
@@ -864,9 +925,11 @@ export default function ToleranceAnalyzer() {
                 </>
               )}
             </div>
-            {mcUploadedData && !mcDataMode && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                Please select whether your data contains nominal values or tolerance deviations before running.
+
+            {/* Validation error */}
+            {mcFileError && (
+              <p className="text-xs text-red-600 dark:text-red-400 mt-2 font-medium">
+                {"\u2717"} {mcFileError}
               </p>
             )}
           </div>
@@ -1119,7 +1182,7 @@ function FeatureRow({
       </td>
 
       {/* Distribution */}
-      <td className="px-1 py-2 text-center">
+      <td className="px-2 py-2 text-center">
         <select
           value={feature.distribution}
           onChange={(e) =>
@@ -1127,9 +1190,8 @@ function FeatureRow({
               distribution: e.target.value as "normal" | "uniform",
             })
           }
-          title={feature.distribution === "normal" ? "Normal distribution" : "Uniform distribution"}
-          className="text-xs rounded border-navy-200 dark:border-forest-600 bg-navy-50/50 dark:bg-forest-700
-                     text-navy-700 dark:text-forest-200 focus:border-gold-500 focus:ring-gold-500 py-0.5 px-1"
+          title={feature.distribution === "normal" ? "Normal (Gaussian)" : "Uniform (flat)"}
+          className="select-field text-xs w-full min-w-[3rem] py-1 px-1.5"
         >
           <option value="normal">N</option>
           <option value="uniform">U</option>
