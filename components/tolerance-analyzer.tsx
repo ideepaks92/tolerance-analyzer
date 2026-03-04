@@ -119,7 +119,7 @@ export default function ToleranceAnalyzer() {
   const [userName, setUserName] = useState("");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [unit, setUnit] = useState<"mm" | "in">("mm");
-  const [sigmaK, setSigmaK] = useState(3);
+  const [sigmaK, setSigmaK] = useState(4);
   const [nodeDescriptions, setNodeDescriptions] = useState<string[]>(() =>
     Array(26).fill("")
   );
@@ -135,6 +135,7 @@ export default function ToleranceAnalyzer() {
   const [mcFileUnit, setMcFileUnit] = useState<"mm" | "in">("mm");
   const [mcFileError, setMcFileError] = useState<string | null>(null);
   const [mcSupplement, setMcSupplement] = useState(true);
+  const [mcShowNominal, setMcShowNominal] = useState(false);
   const mcFileRef = useRef<HTMLInputElement>(null);
 
   const targetPlusRef = useRef<HTMLInputElement>(null);
@@ -525,22 +526,20 @@ export default function ToleranceAnalyzer() {
             </button>
           </div>
 
-          <div className="flex items-end gap-3 flex-wrap">
-          {/* Net Nominal — live display */}
-          {features.some((f) => f.nominal !== "") && (
-            <div className="bg-navy-50 dark:bg-forest-800 border border-navy-200 dark:border-forest-700 rounded-lg px-3 py-2.5">
-              <p className="text-[10px] font-semibold text-navy-600 dark:text-gold-400 uppercase tracking-wider mb-1">
-                Net Nominal
-              </p>
-              <p className="text-base font-mono font-bold text-navy-800 dark:text-forest-100 tabular-nums text-right">
-                {netNominal.toFixed(decimals)}
-                <span className="text-[10px] font-normal text-navy-400 dark:text-forest-400 ml-1">{unit}</span>
-              </p>
-            </div>
-          )}
-
-          {/* Target tolerance */}
+          {/* Target + Net Nominal side by side */}
           <div className="flex items-end gap-2 bg-gold-50 dark:bg-gold-900/20 border border-gold-300 dark:border-gold-700 rounded-lg px-3 py-2.5">
+            {/* Net Nominal — inline */}
+            {features.some((f) => f.nominal !== "") && (
+              <div className="pr-2 mr-1 border-r border-gold-200 dark:border-gold-700/60">
+                <p className="text-[10px] font-semibold text-navy-600 dark:text-gold-400 uppercase tracking-wider mb-1">
+                  Net Nominal
+                </p>
+                <p className="text-sm font-mono font-bold text-navy-800 dark:text-forest-100 tabular-nums text-right py-0.5">
+                  {netNominal.toFixed(decimals)}
+                  <span className="text-[10px] font-normal text-navy-400 dark:text-forest-400 ml-1">{unit}</span>
+                </p>
+              </div>
+            )}
             <div>
               <p className="text-[10px] font-semibold text-navy-600 dark:text-gold-400 uppercase tracking-wider mb-1">
                 Stack-Up Target
@@ -593,7 +592,6 @@ export default function ToleranceAnalyzer() {
             >
               <LockIcon locked={linkTarget} />
             </button>
-          </div>
           </div>
         </div>
       </header>
@@ -872,6 +870,33 @@ export default function ToleranceAnalyzer() {
             </div>
           </div>
 
+          {/* Histogram mode toggle — only when nominals exist */}
+          {mcResult && features.some((f) => f.nominal !== "") && (
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-xs font-medium text-navy-500 dark:text-forest-300">View:</span>
+              <button
+                onClick={() => setMcShowNominal(false)}
+                className={`text-xs font-semibold px-2.5 py-1 rounded-l-md border transition-colors ${
+                  !mcShowNominal
+                    ? "bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950 border-navy-600 dark:border-gold-500"
+                    : "bg-white dark:bg-forest-700 text-navy-500 dark:text-forest-300 border-navy-200 dark:border-forest-600 hover:bg-navy-50 dark:hover:bg-forest-600"
+                }`}
+              >
+                Tolerance deviation
+              </button>
+              <button
+                onClick={() => setMcShowNominal(true)}
+                className={`text-xs font-semibold px-2.5 py-1 rounded-r-md border border-l-0 transition-colors ${
+                  mcShowNominal
+                    ? "bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950 border-navy-600 dark:border-gold-500"
+                    : "bg-white dark:bg-forest-700 text-navy-500 dark:text-forest-300 border-navy-200 dark:border-forest-600 hover:bg-navy-50 dark:hover:bg-forest-600"
+                }`}
+              >
+                Nominal {"\u00b1"} tolerance
+              </button>
+            </div>
+          )}
+
           {/* Histogram / placeholder */}
           {mcResult ? (
             <MonteCarloChart
@@ -881,6 +906,7 @@ export default function ToleranceAnalyzer() {
               unit={unit}
               decimals={decimals}
               sigmaK={sigmaK}
+              nominalOffset={mcShowNominal ? netNominal : 0}
             />
           ) : (
             <p className="text-sm text-navy-400 dark:text-forest-400 text-center py-6">

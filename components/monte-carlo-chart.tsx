@@ -35,6 +35,7 @@ interface Props {
   unit: string;
   decimals: number;
   sigmaK: number;
+  nominalOffset?: number;
 }
 
 export default function MonteCarloChart({
@@ -44,8 +45,14 @@ export default function MonteCarloChart({
   unit,
   decimals,
   sigmaK,
+  nominalOffset = 0,
 }: Props) {
   const { stats, histogram } = result;
+  const off = nominalOffset;
+
+  const shiftedBinMin = histogram.binMin + off;
+  const shiftedBinMax = histogram.binMax + off;
+  const shiftedMean = stats.mean + off;
 
   const svgW = 700;
   const svgH = 260;
@@ -60,24 +67,22 @@ export default function MonteCarloChart({
 
   const xScale = (val: number) =>
     pad.left +
-    ((val - histogram.binMin) / (histogram.binMax - histogram.binMin)) * chartW;
-
-  const yScale = (count: number) =>
-    pad.top + chartH - (count / maxCount) * chartH;
+    ((val - shiftedBinMin) / (shiftedBinMax - shiftedBinMin)) * chartW;
 
   const barW = Math.max(1, chartW / histogram.bins.length - 0.5);
 
   const ticks = useMemo(() => {
-    const range = histogram.binMax - histogram.binMin;
+    const range = shiftedBinMax - shiftedBinMin;
     const step = parseFloat((range / 6).toPrecision(1));
+    if (step <= 0) return [];
     const arr: number[] = [];
-    let v = Math.ceil(histogram.binMin / step) * step;
-    while (v <= histogram.binMax) {
+    let v = Math.ceil(shiftedBinMin / step) * step;
+    while (v <= shiftedBinMax) {
       arr.push(v);
       v += step;
     }
     return arr;
-  }, [histogram.binMin, histogram.binMax]);
+  }, [shiftedBinMin, shiftedBinMax]);
 
   const yTicks = useMemo(() => {
     const step = parseFloat((maxCount / 4).toPrecision(1)) || 1;
@@ -102,6 +107,9 @@ export default function MonteCarloChart({
   const sigmaColor = isDark ? "#7ab494" : "#6e7fa6";
   const fourSigmaColor = "#16a34a";
 
+  const shiftedTargetPlus = targetPlus !== null ? targetPlus + off : null;
+  const shiftedTargetMinus = targetMinus !== null ? -targetMinus + off : null;
+
   return (
     <div>
       <svg
@@ -110,24 +118,18 @@ export default function MonteCarloChart({
         preserveAspectRatio="xMidYMid meet"
       >
         {/* Y axis */}
-        <line
-          x1={pad.left} y1={pad.top} x2={pad.left} y2={pad.top + chartH}
-          stroke={axisColor} strokeWidth={1}
-        />
+        <line x1={pad.left} y1={pad.top} x2={pad.left} y2={pad.top + chartH} stroke={axisColor} strokeWidth={1} />
         {yTicks.map((t) => (
           <g key={`yt-${t}`}>
-            <line x1={pad.left - 4} y1={yScale(t)} x2={pad.left} y2={yScale(t)} stroke={axisColor} strokeWidth={0.5} />
-            <text x={pad.left - 6} y={yScale(t) + 3} textAnchor="end" fontSize={8} fill={textColor}>
+            <line x1={pad.left - 4} y1={pad.top + chartH - (t / maxCount) * chartH} x2={pad.left} y2={pad.top + chartH - (t / maxCount) * chartH} stroke={axisColor} strokeWidth={0.5} />
+            <text x={pad.left - 6} y={pad.top + chartH - (t / maxCount) * chartH + 3} textAnchor="end" fontSize={8} fill={textColor}>
               {t >= 1000 ? `${(t / 1000).toFixed(0)}k` : t}
             </text>
           </g>
         ))}
 
         {/* X axis */}
-        <line
-          x1={pad.left} y1={pad.top + chartH} x2={pad.left + chartW} y2={pad.top + chartH}
-          stroke={axisColor} strokeWidth={1}
-        />
+        <line x1={pad.left} y1={pad.top + chartH} x2={pad.left + chartW} y2={pad.top + chartH} stroke={axisColor} strokeWidth={1} />
         {ticks.map((t) => (
           <g key={`xt-${t}`}>
             <line x1={xScale(t)} y1={pad.top + chartH} x2={xScale(t)} y2={pad.top + chartH + 4} stroke={axisColor} strokeWidth={0.5} />
@@ -138,19 +140,19 @@ export default function MonteCarloChart({
         ))}
 
         <text x={pad.left + chartW / 2} y={svgH - 4} textAnchor="middle" fontSize={9} fill={textColor}>
-          Stack-up tolerance ({unit})
+          {off !== 0 ? `Stack-up dimension (${unit})` : `Stack-up tolerance (${unit})`}
         </text>
 
         {/* Histogram bars */}
         {histogram.bins.map((count, i) => {
           if (count === 0) return null;
-          const cx = histogram.binCenters[i];
+          const cx = histogram.binCenters[i] + off;
           const x = xScale(cx) - barW / 2;
           const h = (count / maxCount) * chartH;
           const isOutside =
-            targetPlus !== null &&
-            targetMinus !== null &&
-            (cx > targetPlus || cx < -targetMinus);
+            shiftedTargetPlus !== null &&
+            shiftedTargetMinus !== null &&
+            (cx > shiftedTargetPlus || cx < shiftedTargetMinus);
           return (
             <rect
               key={i}
@@ -163,7 +165,7 @@ export default function MonteCarloChart({
         })}
 
         {/* 4σ lines (green) */}
-        {[stats.mean - 4 * stats.stdDev, stats.mean + 4 * stats.stdDev].map(
+        {[shiftedMean - 4 * stats.stdDev, shiftedMean + 4 * stats.stdDev].map(
           (v, i) => (
             <line
               key={`4sig-${i}`}
@@ -174,7 +176,7 @@ export default function MonteCarloChart({
         )}
 
         {/* kσ bounds */}
-        {[stats.mean - sigmaK * stats.stdDev, stats.mean + sigmaK * stats.stdDev].map(
+        {[shiftedMean - sigmaK * stats.stdDev, shiftedMean + sigmaK * stats.stdDev].map(
           (v, i) => (
             <line
               key={`sig-${i}`}
@@ -186,35 +188,35 @@ export default function MonteCarloChart({
 
         {/* Mean line */}
         <line
-          x1={xScale(stats.mean)} y1={pad.top} x2={xScale(stats.mean)} y2={pad.top + chartH}
+          x1={xScale(shiftedMean)} y1={pad.top} x2={xScale(shiftedMean)} y2={pad.top + chartH}
           stroke={meanColor} strokeWidth={1.5} strokeDasharray="4 2"
         />
 
         {/* Target lines */}
-        {targetPlus !== null && (
+        {shiftedTargetPlus !== null && (
           <line
-            x1={xScale(targetPlus)} y1={pad.top} x2={xScale(targetPlus)} y2={pad.top + chartH}
+            x1={xScale(shiftedTargetPlus)} y1={pad.top} x2={xScale(shiftedTargetPlus)} y2={pad.top + chartH}
             stroke={targetColor} strokeWidth={1.5} strokeDasharray="6 3"
           />
         )}
-        {targetMinus !== null && (
+        {shiftedTargetMinus !== null && (
           <line
-            x1={xScale(-targetMinus)} y1={pad.top} x2={xScale(-targetMinus)} y2={pad.top + chartH}
+            x1={xScale(shiftedTargetMinus)} y1={pad.top} x2={xScale(shiftedTargetMinus)} y2={pad.top + chartH}
             stroke={targetColor} strokeWidth={1.5} strokeDasharray="6 3"
           />
         )}
       </svg>
 
-      {/* Legend — all labels moved here from inline SVG text */}
+      {/* Legend */}
       <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-xs text-navy-500 dark:text-forest-400">
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-4 h-0.5 rounded" style={{ background: meanColor }} />
-          Mean ({stats.mean.toFixed(decimals)} {unit})
+          Mean ({shiftedMean.toFixed(decimals)} {unit})
         </span>
-        {targetPlus !== null && (
+        {shiftedTargetPlus !== null && (
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-4 h-0.5 rounded" style={{ background: targetColor }} />
-            Target limits (+{targetPlus.toFixed(decimals)} / -{(targetMinus ?? targetPlus).toFixed(decimals)} {unit})
+            Target limits ({shiftedTargetPlus.toFixed(decimals)} / {shiftedTargetMinus?.toFixed(decimals)} {unit})
           </span>
         )}
         <span className="flex items-center gap-1.5">
@@ -225,7 +227,7 @@ export default function MonteCarloChart({
           <span className="inline-block w-4 h-0.5 rounded" style={{ background: fourSigmaColor }} />
           {"\u00b14\u03c3"} bounds
         </span>
-        {targetPlus !== null && (
+        {shiftedTargetPlus !== null && (
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-3 h-2 rounded-sm opacity-50" style={{ background: targetColor }} />
             Out of spec
@@ -238,10 +240,10 @@ export default function MonteCarloChart({
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
-        <Stat label="Mean" value={stats.mean.toFixed(decimals)} unit={unit} />
+        <Stat label="Mean" value={shiftedMean.toFixed(decimals)} unit={unit} />
         <Stat label="Std Dev" value={stats.stdDev.toFixed(decimals)} unit={unit} />
-        <Stat label="Min" value={stats.min.toFixed(decimals)} unit={unit} />
-        <Stat label="Max" value={stats.max.toFixed(decimals)} unit={unit} />
+        <Stat label="Min" value={(stats.min + off).toFixed(decimals)} unit={unit} />
+        <Stat label="Max" value={(stats.max + off).toFixed(decimals)} unit={unit} />
         <Stat
           label="MC DPPM"
           value={stats.dppm !== null ? stats.dppm.toLocaleString() : "\u2014"}
