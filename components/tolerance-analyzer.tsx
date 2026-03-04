@@ -933,26 +933,28 @@ export default function ToleranceAnalyzer() {
             {/* File unit + data type */}
             <div className="flex flex-wrap items-center gap-5 mb-3">
               <span className="text-xs font-medium text-navy-600 dark:text-forest-300">File units:</span>
-              <button
-                onClick={() => setMcFileUnit("mm")}
-                className={`text-xs font-semibold px-2 py-0.5 rounded-l-md border transition-colors ${
-                  mcFileUnit === "mm"
-                    ? "bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950 border-navy-600 dark:border-gold-500"
-                    : "bg-white dark:bg-forest-700 text-navy-500 dark:text-forest-300 border-navy-200 dark:border-forest-600 hover:bg-navy-50 dark:hover:bg-forest-600"
-                }`}
-              >
-                mm
-              </button>
-              <button
-                onClick={() => setMcFileUnit("in")}
-                className={`text-xs font-semibold px-2 py-0.5 rounded-r-md border border-l-0 transition-colors ${
-                  mcFileUnit === "in"
-                    ? "bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950 border-navy-600 dark:border-gold-500"
-                    : "bg-white dark:bg-forest-700 text-navy-500 dark:text-forest-300 border-navy-200 dark:border-forest-600 hover:bg-navy-50 dark:hover:bg-forest-600"
-                }`}
-              >
-                in
-              </button>
+              <div className="inline-flex">
+                <button
+                  onClick={() => setMcFileUnit("mm")}
+                  className={`text-xs font-semibold px-2 py-0.5 rounded-l-md border transition-colors ${
+                    mcFileUnit === "mm"
+                      ? "bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950 border-navy-600 dark:border-gold-500"
+                      : "bg-white dark:bg-forest-700 text-navy-500 dark:text-forest-300 border-navy-200 dark:border-forest-600 hover:bg-navy-50 dark:hover:bg-forest-600"
+                  }`}
+                >
+                  mm
+                </button>
+                <button
+                  onClick={() => setMcFileUnit("in")}
+                  className={`text-xs font-semibold px-2 py-0.5 rounded-r-md border border-l-0 transition-colors ${
+                    mcFileUnit === "in"
+                      ? "bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950 border-navy-600 dark:border-gold-500"
+                      : "bg-white dark:bg-forest-700 text-navy-500 dark:text-forest-300 border-navy-200 dark:border-forest-600 hover:bg-navy-50 dark:hover:bg-forest-600"
+                  }`}
+                >
+                  in
+                </button>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-5 mb-3">
               <span className="text-xs font-medium text-navy-600 dark:text-forest-300">Data contains:</span>

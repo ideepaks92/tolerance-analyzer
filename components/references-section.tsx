@@ -51,7 +51,7 @@ export default function ReferencesSection() {
       <h3 className="text-sm font-bold text-navy-600 dark:text-gold-400 uppercase tracking-wider mb-3">
         References &amp; Resources
       </h3>
-      <div className="max-h-52 overflow-y-auto pr-1">
+      <div>
         <div className="grid md:grid-cols-3 gap-x-8 gap-y-4">
           {/* Theory */}
           <div>
