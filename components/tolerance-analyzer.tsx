@@ -70,6 +70,7 @@ interface Feature {
   processId: string;
   tolPlus: string;
   tolMinus: string;
+  nominal: string;
   direction: 1 | -1;
   distribution: "normal" | "uniform";
 }
@@ -90,6 +91,7 @@ function createFeature(u: "mm" | "in" = "mm"): Feature {
     processId: proc.id,
     tolPlus: tol,
     tolMinus: tol,
+    nominal: "",
     direction: 1,
     distribution: "normal" as const,
   };
@@ -128,6 +130,9 @@ export default function ToleranceAnalyzer() {
   const [mcResult, setMcResult] = useState<MCResult | null>(null);
   const [mcRunning, setMcRunning] = useState(false);
   const mcWorkerRef = useRef<Worker | null>(null);
+  const [mcUploadedData, setMcUploadedData] = useState<number[][] | null>(null);
+  const [mcDataMode, setMcDataMode] = useState<"nominal" | "tolerance" | null>(null);
+  const mcFileRef = useRef<HTMLInputElement>(null);
 
   const targetPlusRef = useRef<HTMLInputElement>(null);
   const targetMinusRef = useRef<HTMLInputElement>(null);
@@ -177,6 +182,7 @@ export default function ToleranceAnalyzer() {
         ...f,
         tolPlus: convertTol(f.tolPlus, factor, dec),
         tolMinus: convertTol(f.tolMinus, factor, dec),
+        nominal: f.nominal ? convertTol(f.nominal, factor, dec) : f.nominal,
       }))
     );
     setTargetPlus((prev) => (prev ? convertTol(prev, factor, dec) : prev));
@@ -201,6 +207,15 @@ export default function ToleranceAnalyzer() {
     const tm = targetMinus !== "" ? parseFloat(targetMinus) : null;
     return calculateStackup(featureInputs, tp, linkTarget ? tp : tm, sigmaK);
   }, [featureInputs, targetPlus, targetMinus, linkTarget, sigmaK]);
+
+  const netNominal = useMemo(
+    () =>
+      features.reduce((sum, f) => {
+        const nom = parseFloat(f.nominal);
+        return sum + (isNaN(nom) ? 0 : f.direction * nom);
+      }, 0),
+    [features]
+  );
 
   const hasTarget = targetPlus !== "" && parseFloat(targetPlus) > 0;
   const quality = results.dppm !== null ? getQualityLevel(results.dppm) : null;
@@ -269,6 +284,7 @@ export default function ToleranceAnalyzer() {
         processId: "custom",
         tolPlus: "0",
         tolMinus: "0",
+        nominal: "",
         direction: 1 as const,
         distribution: "normal" as const,
       }))
@@ -280,6 +296,8 @@ export default function ToleranceAnalyzer() {
     setTitle("");
     setUserName("");
     setNodeDescriptions(Array(26).fill(""));
+    setMcUploadedData(null);
+    setMcDataMode(null);
   }, [unit]);
 
   const updateNodeDescription = useCallback(
@@ -351,11 +369,13 @@ export default function ToleranceAnalyzer() {
             (i === features.length - 1 ? "A\u02BC" : LETTERS[i + 1]) +
             (toDesc ? ` (${toDesc})` : ""),
           process: getProcessById(f.processId)?.name || "Custom",
+          nominal: parseFloat(f.nominal) || 0,
           tolPlus: parseFloat(f.tolPlus) || 0,
           tolMinus: parseFloat(f.tolMinus) || 0,
           direction: f.direction as 1 | -1,
         };
       }),
+      netNominal,
       results,
       recommendation: recommendation.summary,
       recommendationMethod: methodLabel,
@@ -364,7 +384,7 @@ export default function ToleranceAnalyzer() {
       sigmaK,
       mcStats: mcResult?.stats ?? null,
     };
-  }, [title, userName, unit, features, nodeDescriptions, results, recommendation, targetPlus, targetMinus, sigmaK, mcResult]);
+  }, [title, userName, unit, features, nodeDescriptions, results, recommendation, targetPlus, targetMinus, sigmaK, mcResult, netNominal]);
 
   const handleExportPDF = useCallback(async () => {
     const { exportToPDF } = await import("@/lib/export");
@@ -376,6 +396,23 @@ export default function ToleranceAnalyzer() {
     exportToXLSX(buildExportData());
   }, [buildExportData]);
 
+  const handleMcFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const XLSX = await import("xlsx");
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const raw: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const dataRows = raw.slice(1);
+    const parsed: number[][] = dataRows
+      .map((row) => row.map((c) => (typeof c === "number" ? c : parseFloat(String(c)))))
+      .filter((row) => row.some((v) => !isNaN(v)));
+    if (parsed.length === 0) { alert("No numeric data found in the file."); return; }
+    setMcUploadedData(parsed);
+    if (mcFileRef.current) mcFileRef.current.value = "";
+  }, []);
+
   const runMonteCarlo = useCallback(() => {
     setMcRunning(true);
     setMcResult(null);
@@ -383,10 +420,12 @@ export default function ToleranceAnalyzer() {
     mcWorkerRef.current = worker;
     const tp = targetPlus !== "" ? parseFloat(targetPlus) : null;
     const tm = targetMinus !== "" ? parseFloat(targetMinus) : null;
-    worker.postMessage({
+
+    const msg: Record<string, unknown> = {
       features: features.map((f) => ({
         tolPlus: parseFloat(f.tolPlus) || 0,
         tolMinus: parseFloat(f.tolMinus) || 0,
+        nominal: parseFloat(f.nominal) || 0,
         direction: f.direction,
         distribution: f.distribution,
       })),
@@ -394,9 +433,14 @@ export default function ToleranceAnalyzer() {
       sigmaK,
       targetPlus: tp,
       targetMinus: linkTarget ? tp : tm,
-    });
-    worker.onmessage = (e) => {
-      setMcResult(e.data as MCResult);
+    };
+    if (mcUploadedData && mcDataMode) {
+      msg.historicalData = mcUploadedData;
+      msg.dataMode = mcDataMode;
+    }
+    worker.postMessage(msg);
+    worker.onmessage = (ev) => {
+      setMcResult(ev.data as MCResult);
       setMcRunning(false);
       worker.terminate();
     };
@@ -404,7 +448,7 @@ export default function ToleranceAnalyzer() {
       setMcRunning(false);
       worker.terminate();
     };
-  }, [features, sigmaK, targetPlus, targetMinus, linkTarget]);
+  }, [features, sigmaK, targetPlus, targetMinus, linkTarget, mcUploadedData, mcDataMode]);
 
   /* ---- render ---- */
 
@@ -585,6 +629,7 @@ export default function ToleranceAnalyzer() {
                   <th className="th-cell text-left">To</th>
                   <th className="th-cell w-32">Mfg Process</th>
                   <th className="th-cell w-10 text-center" title="Distribution: Normal or Uniform">Dist</th>
+                  <th className="th-cell w-24 text-right">{"Nominal (" + unit + ")"}</th>
                   <th className="th-cell w-28 text-right">{"+ Tol (" + unit + ")"}</th>
                   <th className="th-cell w-28 text-right">{"\u2212 Tol (" + unit + ")"}</th>
                   <th className="th-cell w-14 text-center">Dir</th>
@@ -632,6 +677,22 @@ export default function ToleranceAnalyzer() {
 
         {/* Recommendation */}
         <RecommendationCard recommendation={recommendation} />
+
+        {/* Net Nominal */}
+        {features.some((f) => f.nominal !== "") && (
+          <div className="card px-5 py-3 flex items-center gap-4">
+            <p className="text-sm font-bold text-navy-600 dark:text-gold-400 uppercase tracking-wider">
+              Net Nominal
+            </p>
+            <p className="text-lg font-mono font-semibold text-navy-800 dark:text-forest-100">
+              {netNominal.toFixed(decimals)}
+              <span className="text-xs font-normal text-navy-400 dark:text-forest-400 ml-1">{unit}</span>
+            </p>
+            <p className="text-xs text-navy-400 dark:text-forest-400">
+              {"\u03a3"} (direction {"\u00d7"} nominal) across all features
+            </p>
+          </div>
+        )}
 
         {/* Results grid */}
         <div className="flex items-center gap-3 mb-1">
@@ -731,28 +792,85 @@ export default function ToleranceAnalyzer() {
 
         {/* Monte Carlo */}
         <div className="card px-5 py-4">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
             <p className="text-sm font-bold text-navy-600 dark:text-gold-400 uppercase tracking-wider">
               Monte Carlo Simulation
             </p>
-            <button
-              onClick={runMonteCarlo}
-              disabled={mcRunning}
-              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold
-                         bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950
-                         hover:bg-navy-700 dark:hover:bg-gold-400 transition-colors
-                         disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {mcRunning ? (
-                <>
-                  <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Running...
-                </>
-              ) : (
-                "Run (1,000,000 iterations)"
-              )}
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={runMonteCarlo}
+                disabled={mcRunning}
+                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold
+                           bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950
+                           hover:bg-navy-700 dark:hover:bg-gold-400 transition-colors
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {mcRunning ? (
+                  <>
+                    <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Running...
+                  </>
+                ) : mcUploadedData ? (
+                  `Run with data (${mcUploadedData.length} rows)`
+                ) : (
+                  "Run (1,000,000 iterations)"
+                )}
+              </button>
+            </div>
           </div>
+
+          {/* Historical data upload */}
+          <div className="mb-4 p-3 rounded-lg border border-navy-100 dark:border-forest-700 bg-navy-50/30 dark:bg-forest-800/20">
+            <p className="text-xs font-semibold text-navy-600 dark:text-gold-400 uppercase tracking-wider mb-2">
+              Optional: Upload Historical Data
+            </p>
+            <p className="text-xs text-navy-400 dark:text-forest-400 mb-2 leading-relaxed">
+              Upload an Excel (.xlsx) or Numbers file. Format: first row must be column headers <strong>1, 2, 3, ...</strong> matching
+              the number of features ({features.length}). Each column contains measured values in <strong>{unit}</strong>. Select
+              whether your data contains nominal dimensions or tolerance deviations (value {"\u2212"} nominal).
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                ref={mcFileRef}
+                type="file"
+                accept=".xlsx,.xls,.numbers,.csv"
+                onChange={handleMcFileUpload}
+                className="text-xs file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium
+                           file:bg-navy-100 dark:file:bg-forest-700 file:text-navy-700 dark:file:text-forest-200
+                           hover:file:bg-navy-200 dark:hover:file:bg-forest-600 transition-colors
+                           text-navy-500 dark:text-forest-400"
+              />
+              {mcUploadedData && (
+                <>
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                    {"\u2713"} {mcUploadedData.length} rows loaded
+                  </span>
+                  <select
+                    value={mcDataMode ?? ""}
+                    onChange={(e) => setMcDataMode(e.target.value as "nominal" | "tolerance")}
+                    className="text-xs rounded-md border-navy-200 dark:border-forest-600 bg-white dark:bg-forest-700
+                               text-navy-700 dark:text-forest-200 py-1 pl-2 pr-6 focus:border-gold-500 focus:ring-gold-500"
+                  >
+                    <option value="" disabled>Data type...</option>
+                    <option value="nominal">Nominal values (raw dimensions)</option>
+                    <option value="tolerance">Tolerance values (deviation from nominal)</option>
+                  </select>
+                  <button
+                    onClick={() => { setMcUploadedData(null); setMcDataMode(null); }}
+                    className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                  >
+                    Clear
+                  </button>
+                </>
+              )}
+            </div>
+            {mcUploadedData && !mcDataMode && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                Please select whether your data contains nominal values or tolerance deviations before running.
+              </p>
+            )}
+          </div>
+
           {mcResult ? (
             <MonteCarloChart
               result={mcResult}
@@ -1016,6 +1134,18 @@ function FeatureRow({
           <option value="normal">N</option>
           <option value="uniform">U</option>
         </select>
+      </td>
+
+      {/* Nominal */}
+      <td className="px-2 py-2">
+        <input
+          type="number"
+          step={step}
+          value={feature.nominal}
+          onChange={(e) => onUpdate(feature.id, { nominal: e.target.value })}
+          placeholder="0"
+          className="tol-input w-full"
+        />
       </td>
 
       {/* + Tol with stepper */}

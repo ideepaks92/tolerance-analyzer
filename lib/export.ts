@@ -10,10 +10,12 @@ export interface ExportData {
     from: string;
     to: string;
     process: string;
+    nominal: number;
     tolPlus: number;
     tolMinus: number;
     direction: 1 | -1;
   }[];
+  netNominal: number;
   results: {
     worstCasePlus: number;
     worstCaseMinus: number;
@@ -182,27 +184,25 @@ export function exportToPDF(data: ExportData) {
   /* ================================================================ */
   sectionHeader("FEATURES");
 
+  const hasNominals = data.features.some((f) => f.nominal !== 0);
+
   autoTable(doc, {
     head: [
-      [
-        "#",
-        "From",
-        "To",
-        "Mfg Process",
-        `+ Tol (${u})`,
-        `- Tol (${u})`,
-        "Dir",
-      ],
+      hasNominals
+        ? ["#", "From", "To", "Mfg Process", `Nominal (${u})`, `+ Tol (${u})`, `- Tol (${u})`, "Dir"]
+        : ["#", "From", "To", "Mfg Process", `+ Tol (${u})`, `- Tol (${u})`, "Dir"],
     ],
-    body: data.features.map((f, i) => [
-      (i + 1).toString(),
-      f.from,
-      f.to,
-      f.process,
-      f.tolPlus.toFixed(dec),
-      f.tolMinus.toFixed(dec),
-      f.direction === 1 ? "+" : "-",
-    ]),
+    body: data.features.map((f, i) => {
+      const base = [
+        (i + 1).toString(),
+        f.from,
+        f.to,
+        f.process,
+      ];
+      if (hasNominals) base.push(f.nominal.toFixed(dec));
+      base.push(f.tolPlus.toFixed(dec), f.tolMinus.toFixed(dec), f.direction === 1 ? "+" : "-");
+      return base;
+    }),
     startY: y,
     margin: { left: margin, right: margin },
     styles: {
@@ -222,16 +222,35 @@ export function exportToPDF(data: ExportData) {
     alternateRowStyles: {
       fillColor: [...C.altRow],
     },
-    columnStyles: {
-      0: { cellWidth: 8, halign: "center" },
-      1: { cellWidth: "auto" },
-      2: { cellWidth: "auto" },
-      3: { cellWidth: 36 },
-      4: { cellWidth: 22, halign: "right", font: "courier" },
-      5: { cellWidth: 22, halign: "right", font: "courier" },
-      6: { cellWidth: 10, halign: "center" },
-    },
+    columnStyles: hasNominals
+      ? {
+          0: { cellWidth: 8, halign: "center" },
+          1: { cellWidth: "auto" },
+          2: { cellWidth: "auto" },
+          3: { cellWidth: 32 },
+          4: { cellWidth: 20, halign: "right", font: "courier" },
+          5: { cellWidth: 20, halign: "right", font: "courier" },
+          6: { cellWidth: 20, halign: "right", font: "courier" },
+          7: { cellWidth: 10, halign: "center" },
+        }
+      : {
+          0: { cellWidth: 8, halign: "center" },
+          1: { cellWidth: "auto" },
+          2: { cellWidth: "auto" },
+          3: { cellWidth: 36 },
+          4: { cellWidth: 22, halign: "right", font: "courier" },
+          5: { cellWidth: 22, halign: "right", font: "courier" },
+          6: { cellWidth: 10, halign: "center" },
+        },
   });
+
+  if (hasNominals) {
+    y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...C.navy);
+    doc.text(`Net Nominal: ${data.netNominal.toFixed(dec)} ${u}`, margin, y);
+  }
 
   y =
     ((doc as unknown as Record<string, { finalY: number }>).lastAutoTable
@@ -525,26 +544,23 @@ export function exportToXLSX(data: ExportData) {
     rows.push([]);
   }
 
-  rows.push([
-    "#",
-    "From",
-    "To",
-    "Mfg Process",
-    `+ Tol (${u})`,
-    `- Tol (${u})`,
-    "Direction",
-  ]);
+  const xlsxHasNom = data.features.some((f) => f.nominal !== 0);
+  const header: (string | number | null)[] = ["#", "From", "To", "Mfg Process"];
+  if (xlsxHasNom) header.push(`Nominal (${u})`);
+  header.push(`+ Tol (${u})`, `- Tol (${u})`, "Direction");
+  rows.push(header);
+
   data.features.forEach((f, i) => {
-    rows.push([
-      i + 1,
-      f.from,
-      f.to,
-      f.process,
-      +f.tolPlus.toFixed(dec),
-      +f.tolMinus.toFixed(dec),
-      f.direction === 1 ? "+" : "-",
-    ]);
+    const row: (string | number | null)[] = [i + 1, f.from, f.to, f.process];
+    if (xlsxHasNom) row.push(+f.nominal.toFixed(dec));
+    row.push(+f.tolPlus.toFixed(dec), +f.tolMinus.toFixed(dec), f.direction === 1 ? "+" : "-");
+    rows.push(row);
   });
+
+  if (xlsxHasNom) {
+    rows.push([]);
+    rows.push(["Net Nominal", +data.netNominal.toFixed(dec), u]);
+  }
 
   rows.push([]);
   rows.push(["Results"]);

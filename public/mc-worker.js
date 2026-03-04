@@ -1,6 +1,7 @@
 /* Monte Carlo tolerance stack-up simulation worker */
-/* Receives: { features, iterations, sigmaK, targetPlus, targetMinus } */
-/* Posts:    { stats, histogram }                                      */
+/* Receives: { features, iterations, sigmaK, targetPlus, targetMinus,
+               historicalData?, dataMode? }                           */
+/* Posts:    { stats, histogram }                                     */
 
 "use strict";
 
@@ -12,48 +13,82 @@ function boxMuller() {
 }
 
 self.onmessage = function (e) {
-  const { features, iterations, sigmaK, targetPlus, targetMinus } = e.data;
-  const N = iterations || 1000000;
+  const {
+    features, iterations, sigmaK, targetPlus, targetMinus,
+    historicalData, dataMode,
+  } = e.data;
+
   const nFeatures = features.length;
+  const useHistorical = Array.isArray(historicalData) && historicalData.length > 0 && dataMode;
 
-  const precomputed = features.map((f) => {
-    const tp = Math.abs(f.tolPlus);
-    const tm = Math.abs(f.tolMinus);
-    const sigma = (tp + tm) / (2 * sigmaK);
-    const mean = (tp - tm) / 2;
-    const halfRange = (tp + tm) / 2;
-    return {
-      sigma,
-      mean,
-      halfRange,
-      dir: f.direction,
-      dist: f.distribution || "normal",
-    };
-  });
+  let N, results;
 
-  const results = new Float64Array(N);
+  if (useHistorical) {
+    N = historicalData.length;
+    results = new Float64Array(N);
+
+    for (let i = 0; i < N; i++) {
+      let stackup = 0;
+      const row = historicalData[i];
+      for (let j = 0; j < nFeatures; j++) {
+        const f = features[j];
+        const rawVal = (j < row.length && !isNaN(row[j])) ? row[j] : 0;
+        let deviation;
+        if (dataMode === "nominal") {
+          deviation = rawVal - (f.nominal || 0);
+        } else {
+          deviation = rawVal;
+        }
+        stackup += f.direction * deviation;
+      }
+      results[i] = stackup;
+    }
+  } else {
+    N = iterations || 1000000;
+    results = new Float64Array(N);
+
+    const precomputed = features.map((f) => {
+      const tp = Math.abs(f.tolPlus);
+      const tm = Math.abs(f.tolMinus);
+      const sigma = (tp + tm) / (2 * sigmaK);
+      const mean = (tp - tm) / 2;
+      const halfRange = (tp + tm) / 2;
+      return {
+        sigma,
+        mean,
+        halfRange,
+        dir: f.direction,
+        dist: f.distribution || "normal",
+      };
+    });
+
+    for (let i = 0; i < N; i++) {
+      let stackup = 0;
+      for (let j = 0; j < nFeatures; j++) {
+        const p = precomputed[j];
+        let sample;
+        if (p.dist === "uniform") {
+          sample = (Math.random() - 0.5) * 2 * p.halfRange;
+        } else {
+          sample = p.mean + p.sigma * boxMuller();
+        }
+        stackup += p.dir * sample;
+      }
+      results[i] = stackup;
+    }
+  }
+
   let sum = 0;
   let sumSq = 0;
   let min = Infinity;
   let max = -Infinity;
 
   for (let i = 0; i < N; i++) {
-    let stackup = 0;
-    for (let j = 0; j < nFeatures; j++) {
-      const p = precomputed[j];
-      let sample;
-      if (p.dist === "uniform") {
-        sample = (Math.random() - 0.5) * 2 * p.halfRange;
-      } else {
-        sample = p.mean + p.sigma * boxMuller();
-      }
-      stackup += p.dir * sample;
-    }
-    results[i] = stackup;
-    sum += stackup;
-    sumSq += stackup * stackup;
-    if (stackup < min) min = stackup;
-    if (stackup > max) max = stackup;
+    const v = results[i];
+    sum += v;
+    sumSq += v * v;
+    if (v < min) min = v;
+    if (v > max) max = v;
   }
 
   const mean = sum / N;
@@ -86,8 +121,9 @@ self.onmessage = function (e) {
   const yieldPct = hasTarget ? ((1 - defects / N) * 100) : null;
 
   const NUM_BINS = 120;
-  const binMin = min - (max - min) * 0.02;
-  const binMax = max + (max - min) * 0.02;
+  const range = max - min;
+  const binMin = min - range * 0.02;
+  const binMax = max + range * 0.02;
   const binWidth = (binMax - binMin) / NUM_BINS;
   const bins = new Array(NUM_BINS).fill(0);
   const binCenters = new Array(NUM_BINS);
