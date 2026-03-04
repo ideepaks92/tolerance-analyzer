@@ -1,6 +1,6 @@
 /* Monte Carlo tolerance stack-up simulation worker */
 /* Receives: { features, iterations, sigmaK, targetPlus, targetMinus,
-               historicalData?, dataMode? }                           */
+               historicalData?, dataMode?, supplement? }              */
 /* Posts:    { stats, histogram }                                     */
 
 "use strict";
@@ -12,22 +12,55 @@ function boxMuller() {
   return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 
+function randomSample(precomputed) {
+  let stackup = 0;
+  for (let j = 0; j < precomputed.length; j++) {
+    const p = precomputed[j];
+    let sample;
+    if (p.dist === "uniform") {
+      sample = (Math.random() - 0.5) * 2 * p.halfRange;
+    } else {
+      sample = p.mean + p.sigma * boxMuller();
+    }
+    stackup += p.dir * sample;
+  }
+  return stackup;
+}
+
 self.onmessage = function (e) {
   const {
     features, iterations, sigmaK, targetPlus, targetMinus,
-    historicalData, dataMode,
+    historicalData, dataMode, supplement,
   } = e.data;
 
   const nFeatures = features.length;
   const useHistorical = Array.isArray(historicalData) && historicalData.length > 0 && dataMode;
+  const totalIterations = iterations || 1000000;
+
+  const precomputed = features.map((f) => {
+    const tp = Math.abs(f.tolPlus);
+    const tm = Math.abs(f.tolMinus);
+    const sigma = (tp + tm) / (2 * sigmaK);
+    const mean = (tp - tm) / 2;
+    const halfRange = (tp + tm) / 2;
+    return {
+      sigma,
+      mean,
+      halfRange,
+      dir: f.direction,
+      dist: f.distribution || "normal",
+    };
+  });
 
   let N, results;
 
   if (useHistorical) {
-    N = historicalData.length;
+    const histN = historicalData.length;
+    const doSupplement = supplement && histN < totalIterations;
+    N = doSupplement ? totalIterations : histN;
     results = new Float64Array(N);
 
-    for (let i = 0; i < N; i++) {
+    for (let i = 0; i < histN; i++) {
       let stackup = 0;
       const row = historicalData[i];
       for (let j = 0; j < nFeatures; j++) {
@@ -43,38 +76,18 @@ self.onmessage = function (e) {
       }
       results[i] = stackup;
     }
+
+    if (doSupplement) {
+      for (let i = histN; i < N; i++) {
+        results[i] = randomSample(precomputed);
+      }
+    }
   } else {
-    N = iterations || 1000000;
+    N = totalIterations;
     results = new Float64Array(N);
 
-    const precomputed = features.map((f) => {
-      const tp = Math.abs(f.tolPlus);
-      const tm = Math.abs(f.tolMinus);
-      const sigma = (tp + tm) / (2 * sigmaK);
-      const mean = (tp - tm) / 2;
-      const halfRange = (tp + tm) / 2;
-      return {
-        sigma,
-        mean,
-        halfRange,
-        dir: f.direction,
-        dist: f.distribution || "normal",
-      };
-    });
-
     for (let i = 0; i < N; i++) {
-      let stackup = 0;
-      for (let j = 0; j < nFeatures; j++) {
-        const p = precomputed[j];
-        let sample;
-        if (p.dist === "uniform") {
-          sample = (Math.random() - 0.5) * 2 * p.halfRange;
-        } else {
-          sample = p.mean + p.sigma * boxMuller();
-        }
-        stackup += p.dir * sample;
-      }
-      results[i] = stackup;
+      results[i] = randomSample(precomputed);
     }
   }
 

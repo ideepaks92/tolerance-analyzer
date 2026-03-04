@@ -5,6 +5,7 @@ import { useMemo } from "react";
 interface DiagramFeature {
   tolPlus: string;
   tolMinus: string;
+  nominal: string;
   direction: 1 | -1;
 }
 
@@ -52,6 +53,19 @@ export default function StackupDiagram({
   unit?: "mm" | "in";
 }) {
   const decimals = unit === "mm" ? 3 : 4;
+
+  const netNominal = useMemo(
+    () =>
+      features.reduce((sum, f) => {
+        const nom = parseFloat(f.nominal);
+        return sum + (isNaN(nom) ? 0 : f.direction * nom);
+      }, 0),
+    [features]
+  );
+  const hasAnyNominal = features.some((f) => {
+    const n = parseFloat(f.nominal);
+    return !isNaN(n) && n !== 0;
+  });
 
   const layout = useMemo(() => {
     if (features.length === 0) return null;
@@ -160,7 +174,9 @@ export default function StackupDiagram({
 
           <line x1={Math.min(tx(finalX), tx(0)) + NODE_R + 2} y1={gapCY} x2={Math.max(tx(finalX), tx(0)) - NODE_R - 2} y2={gapCY} stroke={gapStroke} strokeWidth={2.5} strokeDasharray="8 4" strokeLinecap="round" />
           <text x={(tx(finalX) + tx(0)) / 2} y={gapCY + 18} textAnchor="middle" fill={gapTextFill} fontSize={10.5} fontWeight={600}>
-            {"Gap \u2014 Target Tolerance"}
+            {hasAnyNominal
+              ? `Gap \u2014 Net Nominal: ${netNominal.toFixed(decimals)} ${unit}`
+              : "Gap \u2014 Target Tolerance"}
           </text>
 
           {rows.map((r, i) => {
@@ -170,35 +186,69 @@ export default function StackupDiagram({
             const from = LETTERS[i];
             const to = i === n - 1 ? "A\u02BC" : LETTERS[i + 1];
             const wide = r.width > 110;
+            const nom = parseFloat(features[i].nominal);
+            const hasNom = !isNaN(nom) && nom !== 0;
+            const nomStr = hasNom ? `${nom.toFixed(decimals)}` : "";
 
             return (
               <g key={`blk-${i}`}>
                 <rect x={bx} y={by} width={r.width} height={BLK_H} rx={6} fill={c.fill} stroke={c.stroke} strokeWidth={1.5} />
                 {wide ? (
-                  <text
-                    x={bx + r.width / 2}
-                    y={by + BLK_H / 2 + 1}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fill={c.text}
-                    fontSize={13}
-                    fontWeight={600}
-                    fontFamily="ui-monospace, monospace"
-                  >
-                    {`${from}-${to} (\u00b1${r.tol.toFixed(decimals)})`}
-                  </text>
+                  <>
+                    <text
+                      x={bx + r.width / 2}
+                      y={by + (hasNom ? BLK_H * 0.35 : BLK_H / 2) + 1}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fill={c.text}
+                      fontSize={13}
+                      fontWeight={600}
+                      fontFamily="ui-monospace, monospace"
+                    >
+                      {`${from}-${to} (\u00b1${r.tol.toFixed(decimals)})`}
+                    </text>
+                    {hasNom && (
+                      <text
+                        x={bx + r.width / 2}
+                        y={by + BLK_H * 0.72}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fill={c.text}
+                        fontSize={9.5}
+                        opacity={0.7}
+                        fontFamily="ui-monospace, monospace"
+                      >
+                        {`nom: ${nomStr}`}
+                      </text>
+                    )}
+                  </>
                 ) : (
-                  <text
-                    x={bx + r.width / 2}
-                    y={by + BLK_H / 2}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fill={c.text}
-                    fontSize={11}
-                    fontWeight={600}
-                  >
-                    {`${from}-${to}`}
-                  </text>
+                  <>
+                    <text
+                      x={bx + r.width / 2}
+                      y={by + (hasNom ? BLK_H * 0.35 : BLK_H / 2)}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fill={c.text}
+                      fontSize={11}
+                      fontWeight={600}
+                    >
+                      {`${from}-${to}`}
+                    </text>
+                    {hasNom && (
+                      <text
+                        x={bx + r.width / 2}
+                        y={by + BLK_H * 0.72}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fill={c.text}
+                        fontSize={8.5}
+                        opacity={0.7}
+                      >
+                        {nomStr}
+                      </text>
+                    )}
+                  </>
                 )}
                 <text x={8} y={by + BLK_H / 2} textAnchor="start" dominantBaseline="central" fill={rowNumFill} fontSize={9.5} fontFamily="ui-monospace, monospace">
                   {`#${i + 1}`}

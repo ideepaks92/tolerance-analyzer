@@ -134,6 +134,7 @@ export default function ToleranceAnalyzer() {
   const [mcDataMode, setMcDataMode] = useState<"nominal" | "tolerance" | null>(null);
   const [mcFileUnit, setMcFileUnit] = useState<"mm" | "in">("mm");
   const [mcFileError, setMcFileError] = useState<string | null>(null);
+  const [mcSupplement, setMcSupplement] = useState(true);
   const mcFileRef = useRef<HTMLInputElement>(null);
 
   const targetPlusRef = useRef<HTMLInputElement>(null);
@@ -484,6 +485,7 @@ export default function ToleranceAnalyzer() {
         ? mcUploadedData.map((row) => row.map((v) => v * factor))
         : mcUploadedData;
       msg.dataMode = mcDataMode;
+      msg.supplement = mcSupplement;
     }
     worker.postMessage(msg);
     worker.onmessage = (ev) => {
@@ -495,7 +497,7 @@ export default function ToleranceAnalyzer() {
       setMcRunning(false);
       worker.terminate();
     };
-  }, [features, sigmaK, targetPlus, targetMinus, linkTarget, mcUploadedData, mcDataMode, mcFileUnit, unit]);
+  }, [features, sigmaK, targetPlus, targetMinus, linkTarget, mcUploadedData, mcDataMode, mcFileUnit, unit, mcSupplement]);
 
   /* ---- render ---- */
 
@@ -522,6 +524,20 @@ export default function ToleranceAnalyzer() {
               {theme === "dark" ? <SunIcon /> : <MoonIcon />}
             </button>
           </div>
+
+          <div className="flex items-end gap-3 flex-wrap">
+          {/* Net Nominal — live display */}
+          {features.some((f) => f.nominal !== "") && (
+            <div className="bg-navy-50 dark:bg-forest-800 border border-navy-200 dark:border-forest-700 rounded-lg px-3 py-2.5">
+              <p className="text-[10px] font-semibold text-navy-600 dark:text-gold-400 uppercase tracking-wider mb-1">
+                Net Nominal
+              </p>
+              <p className="text-base font-mono font-bold text-navy-800 dark:text-forest-100 tabular-nums text-right">
+                {netNominal.toFixed(decimals)}
+                <span className="text-[10px] font-normal text-navy-400 dark:text-forest-400 ml-1">{unit}</span>
+              </p>
+            </div>
+          )}
 
           {/* Target tolerance */}
           <div className="flex items-end gap-2 bg-gold-50 dark:bg-gold-900/20 border border-gold-300 dark:border-gold-700 rounded-lg px-3 py-2.5">
@@ -577,6 +593,7 @@ export default function ToleranceAnalyzer() {
             >
               <LockIcon locked={linkTarget} />
             </button>
+          </div>
           </div>
         </div>
       </header>
@@ -728,22 +745,6 @@ export default function ToleranceAnalyzer() {
         {/* Recommendation */}
         <RecommendationCard recommendation={recommendation} />
 
-        {/* Net Nominal */}
-        {features.some((f) => f.nominal !== "") && (
-          <div className="card px-5 py-3 flex items-center gap-4">
-            <p className="text-sm font-bold text-navy-600 dark:text-gold-400 uppercase tracking-wider">
-              Net Nominal
-            </p>
-            <p className="text-lg font-mono font-semibold text-navy-800 dark:text-forest-100">
-              {netNominal.toFixed(decimals)}
-              <span className="text-xs font-normal text-navy-400 dark:text-forest-400 ml-1">{unit}</span>
-            </p>
-            <p className="text-xs text-navy-400 dark:text-forest-400">
-              {"\u03a3"} (direction {"\u00d7"} nominal) across all features
-            </p>
-          </div>
-        )}
-
         {/* Results grid */}
         <div className="flex items-center gap-3 mb-1">
           <p className="text-sm font-bold text-navy-600 dark:text-gold-400 uppercase tracking-wider">Results</p>
@@ -891,7 +892,8 @@ export default function ToleranceAnalyzer() {
               Optional: Upload Historical Data
             </p>
             <p className="text-xs text-navy-400 dark:text-forest-400 mb-3 leading-relaxed">
-              Upload an Excel (.xlsx) or Numbers file. Format: first row must be column headers <strong>1, 2, 3, ...</strong> matching
+              Upload an Excel (.xlsx) or Numbers file with at least <strong>500 rows</strong> for reliable results.
+              Format: first row must be column headers <strong>1, 2, 3, ...</strong> matching
               the number of features ({features.length}). Each column contains measured values in <strong>{mcFileUnit}</strong>.
               {mcFileUnit !== unit && (
                 <span className="text-amber-600 dark:text-amber-400 font-medium">
@@ -986,6 +988,27 @@ export default function ToleranceAnalyzer() {
               <p className="text-xs text-red-600 dark:text-red-400 mt-2 font-medium">
                 {"\u2717"} {mcFileError}
               </p>
+            )}
+
+            {/* Sample size warning + supplement option */}
+            {mcUploadedData && mcUploadedData.length < 500 && (
+              <div className="mt-3 p-2.5 rounded-md border border-amber-200 dark:border-amber-700/50 bg-amber-50/50 dark:bg-amber-900/10">
+                <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                  <strong>{mcUploadedData.length} rows</strong> is below the recommended minimum of <strong>500 rows</strong> for
+                  reliable Monte Carlo results. Small sample sizes may produce unreliable distribution shapes and tail estimates (DPPM).
+                </p>
+                <label className="inline-flex items-center gap-2 mt-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={mcSupplement}
+                    onChange={(e) => setMcSupplement(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded text-gold-500 border-amber-300 dark:border-amber-600 focus:ring-gold-500 dark:bg-forest-700"
+                  />
+                  <span className="text-xs text-amber-800 dark:text-amber-300 font-medium">
+                    Supplement with random sampling to reach 1,000,000 total iterations
+                  </span>
+                </label>
+              </div>
             )}
           </div>
         </div>
