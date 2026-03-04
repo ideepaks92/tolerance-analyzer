@@ -60,23 +60,25 @@ self.onmessage = function (e) {
     N = doSupplement ? totalIterations : histN;
     results = new Float64Array(N);
 
+    /* Convert uploaded rows to per-iteration stack-up deviations.
+       For "nominal" mode: deviation = measuredValue - userNominal.
+       For "tolerance" mode: data is already deviations, use as-is. */
     for (let i = 0; i < histN; i++) {
       let stackup = 0;
       const row = historicalData[i];
       for (let j = 0; j < nFeatures; j++) {
         const f = features[j];
         const rawVal = (j < row.length && !isNaN(row[j])) ? row[j] : 0;
-        let deviation;
-        if (dataMode === "nominal") {
-          deviation = rawVal - (f.nominal || 0);
-        } else {
-          deviation = rawVal;
-        }
+        const deviation = dataMode === "nominal"
+          ? rawVal - (f.nominal || 0)
+          : rawVal;
         stackup += f.direction * deviation;
       }
       results[i] = stackup;
     }
 
+    /* Fill remaining iterations with random samples so both pools
+       contain the same quantity: total stack-up deviation. */
     if (doSupplement) {
       for (let i = histN; i < N; i++) {
         results[i] = randomSample(precomputed);

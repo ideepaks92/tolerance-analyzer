@@ -992,6 +992,14 @@ export default function ToleranceAnalyzer() {
               </p>
             )}
 
+            {/* Nominal mode warning — remind user to fill in nominals */}
+            {mcUploadedData && mcDataMode === "nominal" && !features.some((f) => parseFloat(f.nominal)) && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 font-medium">
+                You selected &ldquo;Nominal values&rdquo; but no nominal dimensions are entered in the features table.
+                The tool will subtract 0 from each uploaded value. Fill in the Nominal column for accurate deviation calculation.
+              </p>
+            )}
+
             {/* Sample size warning + supplement option */}
             {mcUploadedData && mcUploadedData.length < 500 && (
               <div className="mt-3 p-2.5 rounded-md border border-amber-200 dark:border-amber-700/50 bg-amber-50/50 dark:bg-amber-900/10">
