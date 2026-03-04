@@ -667,7 +667,6 @@ export default function ToleranceAnalyzer() {
                   <th className="th-cell text-left">From</th>
                   <th className="th-cell text-left">To</th>
                   <th className="th-cell w-32">Mfg Process</th>
-                  <th className="th-cell w-16 text-center" title="Distribution: Normal or Uniform">Dist</th>
                   <th className="th-cell w-24 text-right">{"Nominal (" + unit + ")"}</th>
                   <th className="th-cell w-28 text-right">{"+ Tol (" + unit + ")"}</th>
                   <th className="th-cell w-28 text-right">{"\u2212 Tol (" + unit + ")"}</th>
@@ -712,6 +711,10 @@ export default function ToleranceAnalyzer() {
               Reset All to 0
             </button>
           </div>
+          <p className="px-4 py-1.5 text-[11px] text-navy-400 dark:text-forest-400 italic border-t border-navy-100 dark:border-forest-700/30">
+            All features assume a <strong>normal (Gaussian) distribution</strong> for RSS and Monte Carlo analysis.
+            This is standard practice because manufacturing dimensions follow a bell curve around the nominal per the Central Limit Theorem.
+          </p>
         </div>
 
         {/* Recommendation */}
@@ -858,8 +861,24 @@ export default function ToleranceAnalyzer() {
             </div>
           </div>
 
-          {/* Historical data upload */}
-          <div className="mb-4 p-3 rounded-lg border border-navy-100 dark:border-forest-700 bg-navy-50/30 dark:bg-forest-800/20">
+          {/* Histogram / placeholder */}
+          {mcResult ? (
+            <MonteCarloChart
+              result={mcResult}
+              targetPlus={hasTarget ? parseFloat(targetPlus) : null}
+              targetMinus={hasTarget ? parseFloat(linkTarget ? targetPlus : targetMinus) : null}
+              unit={unit}
+              decimals={decimals}
+              sigmaK={sigmaK}
+            />
+          ) : (
+            <p className="text-sm text-navy-400 dark:text-forest-400 text-center py-6">
+              Click &ldquo;Run&rdquo; to simulate 1M random assemblies and visualize the stack-up distribution.
+            </p>
+          )}
+
+          {/* Historical data upload — below histogram */}
+          <div className="mt-4 p-3 rounded-lg border border-navy-100 dark:border-forest-700 bg-navy-50/30 dark:bg-forest-800/20">
             <p className="text-xs font-semibold text-navy-600 dark:text-gold-400 uppercase tracking-wider mb-2">
               Optional: Upload Historical Data
             </p>
@@ -933,21 +952,6 @@ export default function ToleranceAnalyzer() {
               </p>
             )}
           </div>
-
-          {mcResult ? (
-            <MonteCarloChart
-              result={mcResult}
-              targetPlus={hasTarget ? parseFloat(targetPlus) : null}
-              targetMinus={hasTarget ? parseFloat(linkTarget ? targetPlus : targetMinus) : null}
-              unit={unit}
-              decimals={decimals}
-              sigmaK={sigmaK}
-            />
-          ) : (
-            <p className="text-sm text-navy-400 dark:text-forest-400 text-center py-6">
-              Click &ldquo;Run&rdquo; to simulate 1M random assemblies and visualize the stack-up distribution.
-            </p>
-          )}
         </div>
 
         {/* Feedback */}
@@ -1178,23 +1182,6 @@ function FeatureRow({
               {p.name}
             </option>
           ))}
-        </select>
-      </td>
-
-      {/* Distribution */}
-      <td className="px-2 py-2 text-center">
-        <select
-          value={feature.distribution}
-          onChange={(e) =>
-            onUpdate(feature.id, {
-              distribution: e.target.value as "normal" | "uniform",
-            })
-          }
-          title={feature.distribution === "normal" ? "Normal (Gaussian)" : "Uniform (flat)"}
-          className="select-field text-xs w-full min-w-[3rem] py-1 px-1.5"
-        >
-          <option value="normal">N</option>
-          <option value="uniform">U</option>
         </select>
       </td>
 
