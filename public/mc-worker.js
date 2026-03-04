@@ -135,10 +135,15 @@ self.onmessage = function (e) {
   const dppm = hasTarget ? Math.round((defects / N) * 1000000) : null;
   const yieldPct = hasTarget ? ((1 - defects / N) * 100) : null;
 
+  /* Use robust range (0.1th–99.9th percentile) so outliers don't
+     squish the histogram. Outliers land in the edge bins. */
   const NUM_BINS = 120;
-  const range = max - min;
-  const binMin = min - range * 0.02;
-  const binMax = max + range * 0.02;
+  const pLow  = percentile(0.001);
+  const pHigh = percentile(0.999);
+  const pRange = pHigh - pLow || stdDev * 8 || 1;
+  const margin = pRange * 0.05;
+  const binMin = pLow - margin;
+  const binMax = pHigh + margin;
   const binWidth = (binMax - binMin) / NUM_BINS;
   const bins = new Array(NUM_BINS).fill(0);
   const binCenters = new Array(NUM_BINS);
@@ -148,8 +153,10 @@ self.onmessage = function (e) {
   }
 
   for (let i = 0; i < N; i++) {
-    const idx = Math.min(Math.floor((results[i] - binMin) / binWidth), NUM_BINS - 1);
-    if (idx >= 0) bins[idx]++;
+    let idx = Math.floor((results[i] - binMin) / binWidth);
+    if (idx < 0) idx = 0;
+    if (idx >= NUM_BINS) idx = NUM_BINS - 1;
+    bins[idx]++;
   }
 
   self.postMessage({
