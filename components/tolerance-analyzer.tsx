@@ -16,6 +16,8 @@ import { MANUFACTURING_PROCESSES, getProcessById } from "@/lib/constants";
 import StackupDiagram from "./stackup-diagram";
 import ReferencesSection from "./references-section";
 import MonteCarloChart, { type MCResult } from "./monte-carlo-chart";
+import SensitivityChart from "./sensitivity-chart";
+import ToleranceAllocation from "./tolerance-allocation";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -138,6 +140,25 @@ export default function ToleranceAnalyzer() {
   const [mcShowNominal, setMcShowNominal] = useState(false);
   const mcFileRef = useRef<HTMLInputElement>(null);
 
+  /* ---- save / load ---- */
+  interface SavedAnalysis {
+    name: string;
+    savedAt: string;
+    features: Feature[];
+    targetPlus: string;
+    targetMinus: string;
+    linkTarget: boolean;
+    title: string;
+    userName: string;
+    unit: "mm" | "in";
+    sigmaK: number;
+    nodeDescriptions: string[];
+  }
+  const [savedList, setSavedList] = useState<SavedAnalysis[]>([]);
+  const [showSaveLoad, setShowSaveLoad] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [compareData, setCompareData] = useState<SavedAnalysis | null>(null);
+
   const targetPlusRef = useRef<HTMLInputElement>(null);
   const targetMinusRef = useRef<HTMLInputElement>(null);
 
@@ -173,6 +194,98 @@ export default function ToleranceAnalyzer() {
       return next;
     });
   }, []);
+
+  /* ---- save / load helpers ---- */
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("ta-saved");
+      if (raw) setSavedList(JSON.parse(raw));
+    } catch { /* empty */ }
+  }, []);
+
+  const persistSavedList = (list: SavedAnalysis[]) => {
+    setSavedList(list);
+    try { localStorage.setItem("ta-saved", JSON.stringify(list)); } catch { /* empty */ }
+  };
+
+  const saveCurrentAnalysis = useCallback(() => {
+    const name = saveName.trim() || `Analysis ${savedList.length + 1}`;
+    const entry: SavedAnalysis = {
+      name,
+      savedAt: new Date().toISOString(),
+      features: [...features],
+      targetPlus,
+      targetMinus,
+      linkTarget,
+      title,
+      userName,
+      unit,
+      sigmaK,
+      nodeDescriptions: [...nodeDescriptions],
+    };
+    const next = [...savedList, entry];
+    persistSavedList(next);
+    setSaveName("");
+  }, [saveName, savedList, features, targetPlus, targetMinus, linkTarget, title, userName, unit, sigmaK, nodeDescriptions]);
+
+  const loadAnalysis = useCallback((a: SavedAnalysis) => {
+    setFeatures(a.features.map((f) => ({ ...f, id: uid() })));
+    setTargetPlus(a.targetPlus);
+    setTargetMinus(a.targetMinus);
+    setLinkTarget(a.linkTarget);
+    setTitle(a.title);
+    setUserName(a.userName);
+    setUnit(a.unit);
+    setSigmaK(a.sigmaK);
+    setNodeDescriptions(a.nodeDescriptions);
+    setShowSaveLoad(false);
+    setCompareData(null);
+  }, []);
+
+  const deleteSaved = useCallback((idx: number) => {
+    const next = savedList.filter((_, i) => i !== idx);
+    persistSavedList(next);
+  }, [savedList]);
+
+  const exportJSON = useCallback(() => {
+    const entry: SavedAnalysis = {
+      name: title || "Tolerance Analysis",
+      savedAt: new Date().toISOString(),
+      features: [...features],
+      targetPlus,
+      targetMinus,
+      linkTarget,
+      title,
+      userName,
+      unit,
+      sigmaK,
+      nodeDescriptions: [...nodeDescriptions],
+    };
+    const blob = new Blob([JSON.stringify(entry, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(title || "tolerance-analysis").replace(/\s+/g, "-").toLowerCase()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [features, targetPlus, targetMinus, linkTarget, title, userName, unit, sigmaK, nodeDescriptions]);
+
+  const importJSON = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result as string) as SavedAnalysis;
+        if (data.features && Array.isArray(data.features)) {
+          loadAnalysis(data);
+        }
+      } catch { /* ignore */ }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }, [loadAnalysis]);
 
   /* ---- unit toggle ---- */
 
@@ -500,6 +613,38 @@ export default function ToleranceAnalyzer() {
     };
   }, [features, sigmaK, targetPlus, targetMinus, linkTarget, mcUploadedData, mcDataMode, mcFileUnit, unit, mcSupplement]);
 
+  /* ---- tolerance allocation apply ---- */
+  const applyAllocatedTols = useCallback((tols: number[]) => {
+    setFeatures((prev) =>
+      prev.map((f, i) => {
+        const t = tols[i]?.toFixed(decimals) ?? f.tolPlus;
+        return { ...f, tolPlus: t, tolMinus: t };
+      })
+    );
+  }, [decimals]);
+
+  /* ---- sensitivity data ---- */
+  const sensitivityFeatures = useMemo(() =>
+    features.map((f, i) => ({
+      label: `${LETTERS[i]}\u2192${i === features.length - 1 ? "A\u02BC" : LETTERS[i + 1]}`,
+      tolPlus: parseFloat(f.tolPlus) || 0,
+      tolMinus: parseFloat(f.tolMinus) || 0,
+      direction: f.direction,
+    })),
+    [features]
+  );
+
+  /* ---- allocation features ---- */
+  const allocFeatures = useMemo(() =>
+    features.map((f, i) => ({
+      index: i,
+      label: `#${i + 1} ${LETTERS[i]}\u2192${i === features.length - 1 ? "A\u02BC" : LETTERS[i + 1]}`,
+      currentTol: Math.max(parseFloat(f.tolPlus) || 0, parseFloat(f.tolMinus) || 0),
+      processName: getProcessById(f.processId)?.name || "Custom",
+    })),
+    [features]
+  );
+
   /* ---- render ---- */
 
   return (
@@ -620,12 +765,18 @@ export default function ToleranceAnalyzer() {
                          text-navy-800 dark:text-forest-100
                          placeholder:text-navy-300 dark:placeholder:text-forest-500 px-1 py-1"
             />
-            <div className="flex gap-2 shrink-0">
+            <div className="flex gap-2 shrink-0 flex-wrap">
               <button onClick={handleExportPDF} className="export-btn">
                 <DocumentIcon /> PDF
               </button>
               <button onClick={handleExportXLSX} className="export-btn">
                 <TableIcon /> XLSX
+              </button>
+              <button onClick={() => setShowSaveLoad((v) => !v)} className="export-btn">
+                <SaveIcon /> Save / Load
+              </button>
+              <button onClick={exportJSON} className="export-btn">
+                <DownloadIcon /> JSON
               </button>
             </div>
           </div>
@@ -643,6 +794,108 @@ export default function ToleranceAnalyzer() {
             />
           </div>
         </div>
+
+        {/* Save / Load panel */}
+        {showSaveLoad && (
+          <div className="card px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-navy-600 dark:text-gold-400 uppercase tracking-wider">
+                Save &amp; Load
+              </h3>
+              <label className="export-btn cursor-pointer">
+                <UploadIcon /> Import JSON
+                <input type="file" accept=".json" onChange={importJSON} className="hidden" />
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                placeholder="Analysis name..."
+                className="flex-1 max-w-xs text-sm rounded-md border-navy-200 dark:border-forest-600
+                           bg-navy-50/30 dark:bg-forest-700/50 text-navy-700 dark:text-forest-200
+                           placeholder:text-navy-300 dark:placeholder:text-forest-500
+                           focus:border-gold-500 focus:ring-gold-500 px-2 py-1"
+              />
+              <button
+                onClick={saveCurrentAnalysis}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                           bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950
+                           hover:bg-navy-700 dark:hover:bg-gold-400 transition-colors"
+              >
+                Save Current
+              </button>
+            </div>
+            {savedList.length === 0 ? (
+              <p className="text-xs text-navy-400 dark:text-forest-400 italic">No saved analyses yet.</p>
+            ) : (
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {savedList.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-navy-50/50 dark:bg-forest-800/30 border border-navy-100 dark:border-forest-700/50">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-navy-700 dark:text-forest-200 truncate">{s.name}</p>
+                      <p className="text-[10px] text-navy-400 dark:text-forest-500">
+                        {new Date(s.savedAt).toLocaleDateString()} &middot; {s.features.length} features &middot; {s.unit}
+                      </p>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      <button onClick={() => loadAnalysis(s)} className="text-[10px] font-semibold px-2 py-1 rounded bg-navy-100 dark:bg-forest-700 text-navy-600 dark:text-gold-400 hover:bg-navy-200 dark:hover:bg-forest-600 transition-colors">
+                        Load
+                      </button>
+                      <button onClick={() => setCompareData(compareData === s ? null : s)} className="text-[10px] font-semibold px-2 py-1 rounded bg-navy-100 dark:bg-forest-700 text-navy-600 dark:text-forest-300 hover:bg-navy-200 dark:hover:bg-forest-600 transition-colors">
+                        {compareData === s ? "Hide" : "Compare"}
+                      </button>
+                      <button onClick={() => deleteSaved(i)} className="text-[10px] font-semibold px-2 py-1 rounded bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
+                        Del
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Comparison view */}
+            {compareData && (
+              <div className="mt-2 p-3 rounded-lg border border-gold-300 dark:border-gold-700 bg-gold-50/50 dark:bg-gold-900/10">
+                <p className="text-xs font-bold text-navy-600 dark:text-gold-400 uppercase tracking-wider mb-2">
+                  Comparing: <span className="normal-case font-medium">{compareData.name}</span> vs Current
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gold-200 dark:border-gold-700/50 text-left">
+                        <th className="py-1 px-2 font-semibold text-navy-600 dark:text-forest-300">#</th>
+                        <th className="py-1 px-2 font-semibold text-navy-600 dark:text-forest-300">Saved +Tol</th>
+                        <th className="py-1 px-2 font-semibold text-navy-600 dark:text-forest-300">Current +Tol</th>
+                        <th className="py-1 px-2 font-semibold text-navy-600 dark:text-forest-300">Diff</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {compareData.features.map((sf, i) => {
+                        const cf = features[i];
+                        const savedTol = parseFloat(sf.tolPlus) || 0;
+                        const currTol = cf ? (parseFloat(cf.tolPlus) || 0) : 0;
+                        const diff = currTol - savedTol;
+                        const color = Math.abs(diff) < 0.0001 ? "text-navy-400 dark:text-forest-500" :
+                          diff > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400";
+                        return (
+                          <tr key={i} className="border-b border-navy-100/50 dark:border-forest-700/30">
+                            <td className="py-1 px-2 font-mono text-navy-500 dark:text-forest-400">{i + 1}</td>
+                            <td className="py-1 px-2 font-mono tabular-nums">{savedTol.toFixed(decimals)}</td>
+                            <td className="py-1 px-2 font-mono tabular-nums">{currTol.toFixed(decimals)}</td>
+                            <td className={`py-1 px-2 font-mono tabular-nums font-semibold ${color}`}>
+                              {diff > 0.0001 ? "+" : ""}{diff.toFixed(decimals)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Diagram */}
         <div>
@@ -847,6 +1100,25 @@ export default function ToleranceAnalyzer() {
             sigmaK={sigmaK}
           />
         )}
+
+        {/* Sensitivity Analysis */}
+        <SensitivityChart
+          features={sensitivityFeatures}
+          sigmaK={sigmaK}
+          unit={unit}
+          decimals={decimals}
+        />
+
+        {/* Tolerance Allocation */}
+        <ToleranceAllocation
+          features={allocFeatures}
+          sigmaK={sigmaK}
+          unit={unit}
+          decimals={decimals}
+          step={step}
+          targetPlus={hasTarget ? parseFloat(targetPlus) : null}
+          onApply={applyAllocatedTols}
+        />
 
         {/* Monte Carlo */}
         <div className="card px-5 py-4">
@@ -1092,9 +1364,12 @@ export default function ToleranceAnalyzer() {
                            text-sm text-navy-700 dark:text-forest-200 placeholder:text-navy-300 dark:placeholder:text-forest-500
                            focus:border-gold-500 focus:ring-gold-500 px-3 py-2 resize-none"
               />
+              {feedbackEmail.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(feedbackEmail) && (
+                <p className="text-xs text-red-500 dark:text-red-400">Please enter a valid email address.</p>
+              )}
               <button
                 onClick={async () => {
-                  if (!feedbackText.trim()) return;
+                  if (!feedbackText.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(feedbackEmail)) return;
                   setFeedbackSending(true);
                   try {
                     const res = await fetch("/api/feedback", {
@@ -1106,7 +1381,7 @@ export default function ToleranceAnalyzer() {
                   } catch { /* ignore */ }
                   setFeedbackSending(false);
                 }}
-                disabled={!feedbackText.trim() || feedbackSending}
+                disabled={!feedbackText.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(feedbackEmail) || feedbackSending}
                 className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold
                            bg-navy-600 dark:bg-gold-500 text-white dark:text-forest-950
                            hover:bg-navy-700 dark:hover:bg-gold-400 transition-colors
@@ -1605,6 +1880,30 @@ function TableIcon() {
   return (
     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 0 1-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0 1 12 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M11.25 12h.008v.008h-.008V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM12 13.5v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 13.5c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 0v1.5" />
+    </svg>
+  );
+}
+
+function SaveIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
     </svg>
   );
 }
